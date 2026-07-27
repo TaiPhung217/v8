@@ -1,0 +1,58 @@
+[485:504:0404/235238.855059:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory
+[485:504:0404/235238.906102:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Failed to connect to socket /run/user/229127/bus: No such file or directory
+[485:504:0404/235238.906385:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory
+[485:504:0404/235238.906560:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory
+
+Fontconfig error: No writable cache directories
+	/var/cache/fontconfig
+	/usr/local/google/home/vmiura/.cache/fontconfig
+	/usr/local/google/home/vmiura/.fontconfig
+
+Fontconfig error: No writable cache directories
+	/var/cache/fontconfig
+	/usr/local/google/home/vmiura/.cache/fontconfig
+	/usr/local/google/home/vmiura/.fontconfig
+
+Fontconfig error: No writable cache directories
+	/var/cache/fontconfig
+	/usr/local/google/home/vmiura/.cache/fontconfig
+	/usr/local/google/home/vmiura/.fontconfig
+
+Fontconfig error: No writable cache directories
+	/var/cache/fontconfig
+	/usr/local/google/home/vmiura/.cache/fontconfig
+	/usr/local/google/home/vmiura/.fontconfig
+[485:504:0404/235239.098658:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Failed to connect to socket /run/user/229127/bus: No such file or directory
+[485:485:0404/235239.154205:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Failed to connect to socket /run/user/229127/bus: No such file or directory
+[485:485:0404/235239.155627:WARNING:components/os_crypt/sync/key_storage_linux.cc:166] OSCrypt tried Libsecret but couldn't initialise.
+[485:485:0404/235239.369151:WARNING:chrome/browser/signin/account_consistency_mode_manager.cc:74] Desktop Identity Consistency cannot be enabled as no OAuth client ID and client secret have been configured.
+[485:504:0404/235239.411690:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Failed to connect to socket /run/user/229127/bus: No such file or directory
+[485:504:0404/235239.607811:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Failed to connect to socket /run/user/229127/bus: No such file or directory
+[485:485:0404/235239.644610:ERROR:dbus/object_proxy.cc:572] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[485:485:0404/235239.644844:WARNING:device/bluetooth/dbus/bluez_dbus_manager.cc:209] Floss manager service not available, cannot set Floss enable/disable.
+[485:504:0404/235239.645143:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Failed to connect to socket /run/user/229127/bus: No such file or directory
+[485:485:0404/235239.648869:ERROR:dbus/object_proxy.cc:572] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[485:485:0404/235239.713011:ERROR:dbus/object_proxy.cc:572] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[485:485:0404/235239.755188:ERROR:dbus/object_proxy.cc:572] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[485:504:0404/235239.755844:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Failed to connect to socket /run/user/229127/bus: No such file or directory
+[485:504:0404/235239.763590:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory
+[485:504:0404/235239.767739:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Failed to connect to socket /run/dbus/system_bus_socket: No such file or directory
+
+(127.0.0.1:9001:485): dbind-WARNING **: 23:52:39.794: Couldn't connect to accessibility bus: Failed to connect to socket /run/user/229127/at-spi/bus_20: No such file or directory
+[485:485:0404/235240.613514:ERROR:dbus/object_proxy.cc:572] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[485:485:0404/235240.650471:ERROR:dbus/object_proxy.cc:572] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[485:504:0404/235240.651105:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Failed to connect to socket /run/user/229127/bus: No such file or directory
+[485:485:0404/235240.651996:WARNING:dbus/property.cc:94] Failed to connect to PropertiesChangedsignal.
+[485:485:0404/235240.652309:ERROR:dbus/object_proxy.cc:572] Failed to call method: org.freedesktop.DBus.Properties.GetAll: object_path= /org/freedesktop/UPower/devices/DisplayDevice: unknown error type: 
+[485:485:0404/235240.652385:WARNING:dbus/property.cc:174] GetAll request failed for: org.freedesktop.UPower.Device
+[485:485:0404/235240.776322:ERROR:dbus/object_proxy.cc:572] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[485:504:0404/235240.777397:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Failed to connect to socket /run/user/229127/bus: No such file or directory
+[485:505:0404/235240.829156:ERROR:crypto/nss_util.cc:79] Failed to create /usr/local/google/home/vmiura/.local/share/pki/nssdb directory.
+[485:485:0404/235240.928118:ERROR:dbus/object_proxy.cc:572] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[485:504:0404/235240.929497:ERROR:dbus/bus.cc:405] Failed to connect to the bus: Failed to connect to socket /run/user/229127/bus: No such file or directory
+[485:485:0404/235241.039036:ERROR:dbus/object_proxy.cc:572] Failed to call method: org.freedesktop.DBus.NameHasOwner: object_path= /org/freedesktop/DBus: unknown error type: 
+[485:485:0404/235241.039159:WARNING:ui/base/idle/idle_linux.cc:111] None of the known D-Bus ScreenSaver services could be used.
+[485:485:0404/235241.372408:INFO:CONSOLE:1] "[bug] EXECUTED -- body did not match digest", source: http://127.0.0.1:9001/bug.js (1)
+[485:485:0404/235241.380877:INFO:CONSOLE:0] "The resource 'http://127.0.0.1:9001/control-block.js' has an `unencoded-digest` header which asserts a digest which does not match the resource's body.", source: http://127.0.0.1:9001/ (0)
+[485:485:0404/235241.381159:INFO:CONSOLE:1] "SRI-FAIL-OPEN: tampered body executed", source: http://127.0.0.1:9001/control-pass.js (1)
+[485:504:0404/235244.810344:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT

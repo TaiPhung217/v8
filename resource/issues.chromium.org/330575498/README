@@ -1,0 +1,2 @@
+expl.js contains a self-contained exploit - but beware: it also contains the bytes to a rather large WebAssembly file.
+A much better start is template_expl.js which contains everything but the WebAssembly (and shellcode) arrays. makeExpl.py contains the corresponding WASM and shellcode generators.

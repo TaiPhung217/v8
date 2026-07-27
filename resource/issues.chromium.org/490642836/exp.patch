@@ -1,0 +1,44 @@
+diff --git a/src/parsing/rewriter.cc b/src/parsing/rewriter.cc
+index 3ed2e764bfa..3ab2665bee7 100644
+--- a/src/parsing/rewriter.cc
++++ b/src/parsing/rewriter.cc
+@@ -22,6 +22,28 @@
+ 
+ namespace v8::internal {
+ 
++namespace {
++
++bool IsWithCarrierDonorExpression(Statement* statement) {
++  if (statement == nullptr || !statement->IsExpressionStatement()) return false;
++  Expression* expr = statement->AsExpressionStatement()->expression();
++  if (!expr->IsAssignment()) return false;
++  for (Assignment* assign = expr->AsAssignment();; ) {
++    if (assign->target()->IsVariableProxy() &&
++        assign->target()
++            ->AsVariableProxy()
++            ->raw_name()
++            ->IsOneByteEqualTo("f") &&
++        assign->value()->IsFunctionLiteral()) {
++      return true;
++    }
++    if (!assign->value()->IsAssignment()) return false;
++    assign = assign->value()->AsAssignment();
++  }
++}
++
++}  // namespace
++
+ class Processor final : public AstVisitor<Processor> {
+  public:
+   Processor(uintptr_t stack_limit, DeclarationScope* closure_scope,
+@@ -142,6 +164,10 @@ void Processor::VisitBlock(Block* node) {
+   if (!node->ignore_completion_value()) {
+     BreakableScope scope(this, node->is_breakable());
+     Process(node->statements());
++    if (!HasStackOverflow() && node->statements()->length() == 1 &&
++        IsWithCarrierDonorExpression(node->statements()->at(0))) {
++      SetStackOverflow();
++    }
+   }
+   replacement_ = node;
+ }

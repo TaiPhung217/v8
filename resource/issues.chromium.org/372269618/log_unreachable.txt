@@ -1,0 +1,157 @@
+[*] WasmGCTypeAnalyzer::RefineTypeKnowledge() -> intersection_type.is_uninhabited(), object = 9, intersection_type = <bot>
+[*] WasmGCTypeAnalyzer::ProcessAssertNotNull(): known_input_type = nullexternref, target_type = (ref noextern)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::StartNewSnapshotFor() -> block.IsLoop() -> !IsReachable(forward_predecessor)
+[*] WasmGCTypeAnalyzer::ProcessPhi()
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> is_first_loop_header_evaluation_
+[*] WasmGCTypeAnalyzer::ProcessPhi()
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> is_first_loop_header_evaluation_
+[*] WasmGCTypeAnalyzer::ProcessPhi()
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> is_first_loop_header_evaluation_
+[*] WasmGCTypeAnalyzer::ProcessTypeCast(): known_input_type = (ref 2), target_type = (ref 2)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::StartNewSnapshotFor() -> block.IsBranchTarget() -> !IsReachable(predecessor)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::StartNewSnapshotFor() -> block.IsBranchTarget() -> !IsReachable(predecessor)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::StartNewSnapshotFor() -> block.IsLoop() -> !IsReachable(forward_predecessor)
+[*] WasmGCTypeAnalyzer::ProcessTypeCast(): known_input_type = (ref 2), target_type = (ref 2)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::StartNewSnapshotFor() -> block.IsBranchTarget() -> !IsReachable(predecessor)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::StartNewSnapshotFor() -> block.IsBranchTarget() -> !IsReachable(predecessor)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[^] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> !IsReachable(*predecessor)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> all_predecessors_unreachable
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot()
+[*] WasmGCTypeAnalyzer::ProcessTypeCast(): known_input_type = (ref 2), target_type = (ref 2)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::StartNewSnapshotFor() -> block.IsBranchTarget() -> !IsReachable(predecessor)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::StartNewSnapshotFor() -> block.IsBranchTarget() -> !IsReachable(predecessor)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[^] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> !IsReachable(*predecessor)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> all_predecessors_unreachable
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot()
+[*] WasmGCTypeAnalyzer::ProcessTypeCast(): known_input_type = (ref 2), target_type = (ref 2)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::StartNewSnapshotFor() -> block.IsBranchTarget() -> !IsReachable(predecessor)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::StartNewSnapshotFor() -> block.IsBranchTarget() -> !IsReachable(predecessor)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[^] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> !IsReachable(*predecessor)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> all_predecessors_unreachable
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot()
+[*] WasmGCTypeAnalyzer::ProcessTypeCast(): known_input_type = (ref 2), target_type = (ref 2)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::StartNewSnapshotFor() -> block.IsBranchTarget() -> !IsReachable(predecessor)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::StartNewSnapshotFor() -> block.IsBranchTarget() -> !IsReachable(predecessor)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::StartNewSnapshotFor() -> block.IsBranchTarget() -> !IsReachable(predecessor)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::StartNewSnapshotFor() -> block.IsBranchTarget() -> !IsReachable(predecessor)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::StartNewSnapshotFor() -> block.IsBranchTarget() -> !IsReachable(predecessor)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::StartNewSnapshotFor() -> block.IsBranchTarget() -> !IsReachable(predecessor)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::StartNewSnapshotFor() -> block.IsBranchTarget() -> !IsReachable(predecessor)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::StartNewSnapshotFor() -> block.IsBranchTarget() -> !IsReachable(predecessor)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::StartNewSnapshotFor() -> block.IsBranchTarget() -> !IsReachable(predecessor)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[^] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> !IsReachable(*predecessor)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[^] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> !IsReachable(*predecessor)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[^] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> !IsReachable(*predecessor)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[^] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> !IsReachable(*predecessor)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> all_predecessors_unreachable
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot()
+[*] WasmGCTypeAnalyzer::ProcessPhi()
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> union_type = (ref 2)
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, object = 13, input_type = (ref 2)
+[^] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, union_type = (ref 2)
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, object = 13, input_type = (ref 2)
+[^] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, union_type = (ref 2)
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, object = 13, input_type = (ref 2)
+[^] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, union_type = (ref 2)
+[^] WasmGCTypeAnalyzer::ProcessPhi() -> final union_type = (ref 2)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::StartNewSnapshotFor() -> block.IsBranchTarget() -> !IsReachable(predecessor)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[^] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> !IsReachable(*predecessor)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[^] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> !IsReachable(*predecessor)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[^] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> !IsReachable(*predecessor)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[^] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> !IsReachable(*predecessor)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> all_predecessors_unreachable
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot()
+[*] WasmGCTypeAnalyzer::ProcessPhi()
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> union_type = (ref 2)
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, object = 13, input_type = (ref 2)
+[^] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, union_type = (ref 2)
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, object = 13, input_type = (ref 2)
+[^] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, union_type = (ref 2)
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, object = 13, input_type = (ref 2)
+[^] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, union_type = (ref 2)
+[^] WasmGCTypeAnalyzer::ProcessPhi() -> final union_type = (ref 2)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::StartNewSnapshotFor() -> block.IsBranchTarget() -> !IsReachable(predecessor)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[^] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> !IsReachable(*predecessor)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[^] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> !IsReachable(*predecessor)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> all_predecessors_unreachable
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot()
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot() -> reachable.size() = 2, i = 2, first = <bot>
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot(): final type res = <bot>
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::StartNewSnapshotFor() -> block.IsBranchTarget() -> !IsReachable(predecessor)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::StartNewSnapshotFor() -> block.IsBranchTarget() -> !IsReachable(predecessor)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::StartNewSnapshotFor() -> block.IsBranchTarget() -> !IsReachable(predecessor)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[^] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> !IsReachable(*predecessor)
+[*] WasmGCTypeAnalyzer::IsReachable() false
+[^] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> !IsReachable(*predecessor)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> all_predecessors_unreachable
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot()
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot() -> reachable.size() = 2, i = 2, first = <bot>
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot(): final type res = <bot>
+[*] WasmGCTypeAnalyzer::ProcessPhi()
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> union_type = (ref 2)
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, object = 13, input_type = (ref 2)
+[^] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, union_type = (ref 2)
+[^] WasmGCTypeAnalyzer::ProcessPhi() -> final union_type = (ref 2)
+[!] REDUCE_INPUT_GRAPH(WasmTypeCast): (ref 2) -> (ref 2)
+[!] REDUCE_INPUT_GRAPH(WasmTypeCast): (ref 2) -> (ref 2)
+[!] REDUCE_INPUT_GRAPH(WasmTypeCast): (ref 2) -> (ref 2)
+[!] REDUCE_INPUT_GRAPH(WasmTypeCast): (ref 2) -> (ref 2)
+[!] REDUCE_INPUT_GRAPH(WasmTypeCast): (ref 2) -> (ref 2)
+Received signal 11 SEGV_ACCERR 0cbf42424242

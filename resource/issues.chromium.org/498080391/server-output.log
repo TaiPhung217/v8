@@ -1,0 +1,9 @@
+[server] listening on http://127.0.0.1:9001/
+[server] "GET / HTTP/1.1" 200 -
+[server] "GET /control-block.js HTTP/1.1" 200 -
+[server] "GET /control-pass.js HTTP/1.1" 200 -
+[server] "GET /bug.js HTTP/1.1" 200 -
+**** SCRIPT EXECUTED: /report?case=bug ****
+[server] "GET /report?case=bug HTTP/1.1" 204 -
+[server] code 404, message Not Found
+[server] "GET /favicon.ico HTTP/1.1" 404 -

@@ -1,0 +1,7 @@
+target_os = "android"      # These lines need to be changed manually
+target_cpu = "arm"         # as v8gen.py assumes a simulator build.
+v8_target_cpu = "arm"
+is_component_build = false
+v8_android_log_stdout = true
+is_debug = false
+is_java_debug = false

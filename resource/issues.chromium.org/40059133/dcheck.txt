@@ -1,0 +1,32 @@
+#
+# Fatal error in ../../src/heap/marking-visitor-inl.h, line 27
+# Debug check failed: ReadOnlyHeap::Contains(object) || heap_->Contains(object).
+#
+#
+#
+#FailureMessage Object: 0x7ffaba8e9620
+==== C stack trace ===============================
+
+    /home/n/v8s/contrib/v8/out/x64.debug/libv8_libbase.so(v8::base::debug::StackTrace::StackTrace()+0x1e) [0x7ffac3ab79ce]
+    /home/n/v8s/contrib/v8/out/x64.debug/libv8_libplatform.so(+0x562cd) [0x7ffac3a0b2cd]
+    /home/n/v8s/contrib/v8/out/x64.debug/libv8_libbase.so(V8_Fatal(char const*, int, char const*, ...)+0x16f) [0x7ffac3a8730f]
+    /home/n/v8s/contrib/v8/out/x64.debug/libv8_libbase.so(+0x57d9c) [0x7ffac3a86d9c]
+    /home/n/v8s/contrib/v8/out/x64.debug/libv8_libbase.so(V8_Dcheck(char const*, int, char const*)+0x27) [0x7ffac3a873b7]
+    /home/n/v8s/contrib/v8/out/x64.debug/libv8.so(v8::internal::MarkingVisitorBase<v8::internal::ConcurrentMarkingVisitor, v8::internal::ConcurrentMarkingState>::MarkObject(v8::internal::HeapObject, v8::internal::HeapObject)+0x87) [0x7ffac1caf1d7]
+    /home/n/v8s/contrib/v8/out/x64.debug/libv8.so(void v8::internal::MarkingVisitorBase<v8::internal::ConcurrentMarkingVisitor, v8::internal::ConcurrentMarkingState>::ProcessStrongHeapObject<v8::internal::CompressedHeapObjectSlot>(v8::internal::HeapObject, v8::internal::CompressedHeapObjectSlot, v8::internal::HeapObject)+0x83) [0x7ffac1caf0d3]
+    /home/n/v8s/contrib/v8/out/x64.debug/libv8.so(void v8::internal::MarkingVisitorBase<v8::internal::ConcurrentMarkingVisitor, v8::internal::ConcurrentMarkingState>::VisitPointersImpl<v8::internal::CompressedObjectSlot>(v8::internal::HeapObject, v8::internal::CompressedObjectSlot, v8::internal::CompressedObjectSlot)+0xde) [0x7ffac1caeeee]
+    /home/n/v8s/contrib/v8/out/x64.debug/libv8.so(v8::internal::MarkingVisitorBase<v8::internal::ConcurrentMarkingVisitor, v8::internal::ConcurrentMarkingState>::VisitPointers(v8::internal::HeapObject, v8::internal::CompressedObjectSlot, v8::internal::CompressedObjectSlot)+0x45) [0x7ffac1cae1c5]
+    /home/n/v8s/contrib/v8/out/x64.debug/libv8.so(void v8::internal::BodyDescriptorBase::IteratePointers<v8::internal::ConcurrentMarkingVisitor>(v8::internal::HeapObject, int, int, v8::internal::ConcurrentMarkingVisitor*)+0x83) [0x7ffac1cc07c3]
+    /home/n/v8s/contrib/v8/out/x64.debug/libv8.so(void v8::internal::JSObject::FastBodyDescriptor::IterateBody<v8::internal::ConcurrentMarkingVisitor>(v8::internal::Map, v8::internal::HeapObject, int, v8::internal::ConcurrentMarkingVisitor*)+0x34) [0x7ffac1cd5054]
+    /home/n/v8s/contrib/v8/out/x64.debug/libv8.so(int v8::internal::ConcurrentMarkingVisitor::VisitJSObjectSubclass<v8::internal::JSObject, v8::internal::JSObject::FastBodyDescriptor>(v8::internal::Map, v8::internal::JSObject)+0x1de) [0x7ffac1cd4fee]
+    /home/n/v8s/contrib/v8/out/x64.debug/libv8.so(int v8::internal::ConcurrentMarkingVisitor::VisitJSObjectSubclassFast<v8::internal::JSObject>(v8::internal::Map, v8::internal::JSObject)+0x35) [0x7ffac1cd4e05]
+    /home/n/v8s/contrib/v8/out/x64.debug/libv8.so(v8::internal::ConcurrentMarkingVisitor::VisitJSObjectFast(v8::internal::Map, v8::internal::JSObject)+0x35) [0x7ffac1cc0275]
+    /home/n/v8s/contrib/v8/out/x64.debug/libv8.so(v8::internal::HeapVisitor<int, v8::internal::ConcurrentMarkingVisitor>::Visit(v8::internal::Map, v8::internal::HeapObject)+0x1edc) [0x7ffac1caccec]
+    /home/n/v8s/contrib/v8/out/x64.debug/libv8.so(v8::internal::ConcurrentMarking::Run(v8::JobDelegate*, v8::base::EnumSet<v8::internal::CodeFlushMode, int>, unsigned int, bool)+0x77b) [0x7ffac1ca8f6b]
+    /home/n/v8s/contrib/v8/out/x64.debug/libv8.so(v8::internal::ConcurrentMarking::JobTask::Run(v8::JobDelegate*)+0x24d) [0x7ffac1cd56ad]
+    /home/n/v8s/contrib/v8/out/x64.debug/libv8_libplatform.so(v8::platform::DefaultJobWorker::Run()+0xd9) [0x7ffac3a092f9]
+    /home/n/v8s/contrib/v8/out/x64.debug/libv8_libplatform.so(v8::platform::DefaultWorkerThreadsTaskRunner::WorkerThread::Run()+0x5f) [0x7ffac3a11c7f]
+    /home/n/v8s/contrib/v8/out/x64.debug/libv8_libbase.so(v8::base::Thread::NotifyStartedAndRun()+0x36) [0x7ffac3ab6ff6]
+    /home/n/v8s/contrib/v8/out/x64.debug/libv8_libbase.so(+0x86e4d) [0x7ffac3ab5e4d]
+    /lib/x86_64-linux-gnu/libpthread.so.0(+0x76db) [0x7ffabea576db]
+    /lib/x86_64-linux-gnu/libc.so.6(clone+0x3f) [0x7ffabe3e261f]

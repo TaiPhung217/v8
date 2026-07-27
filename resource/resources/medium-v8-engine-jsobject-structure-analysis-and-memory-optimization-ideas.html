@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>V8 Engine JSObject Structure Analysis and Memory Optimization Ideas</title>
+  <meta name="source" content="https://medium.com/@bpmxmqd/v8-engine-jsobject-structure-analysis-and-memory-optimization-ideas-be30cfcdcd16" />
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f8fb;
+      --paper: #ffffff;
+      --ink: #17202a;
+      --muted: #5e6a78;
+      --line: #d9dee8;
+      --accent: #0b6bcb;
+      --accent-dark: #064a91;
+      --code-bg: #f0f3f7;
+      --code-ink: #17202a;
+      --quote-bg: #fff8e6;
+      --quote-line: #d69a2d;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.68 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    a { color: var(--accent); text-decoration-thickness: .08em; text-underline-offset: .16em; }
+    a:hover { color: var(--accent-dark); }
+    .hero { min-height: 300px; display: flex; align-items: flex-end; padding: clamp(30px, 7vw, 76px) clamp(18px, 6vw, 72px); background: #111827 center/cover no-repeat;  color: #fff; }
+    .hero-inner { width: min(1040px, 100%); margin: 0 auto; }
+    .source { display: inline-flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 16px; color: rgba(255,255,255,.84); font-size: 14px; }
+    .source a { color: #fff; }
+    h1 { margin: 0; max-width: 980px; font-size: clamp(32px, 5vw, 58px); line-height: 1.08; letter-spacing: 0; }
+    .dek { margin: 20px 0 0; max-width: 900px; color: rgba(255,255,255,.86); font-size: clamp(18px, 2vw, 21px); line-height: 1.48; }
+    .shell { width: min(1040px, calc(100% - 32px)); margin: 0 auto; }
+    .meta-bar { display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: center; margin: 22px 0; padding: 14px 0; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 15px; }
+    main { background: var(--paper); margin: 0 auto 56px; padding: clamp(22px, 5vw, 58px); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 14px 35px rgba(22, 33, 49, .08); }
+    article { max-width: 900px; margin: 0 auto; }
+    h2, h3, h4, h5, h6 { line-height: 1.25; letter-spacing: 0; color: #111827; }
+    h2 { margin: 2.05em 0 .7em; font-size: clamp(25px, 3vw, 35px); border-bottom: 1px solid var(--line); padding-bottom: .25em; }
+    h3 { margin: 1.75em 0 .5em; font-size: 24px; }
+    h4 { margin: 1.45em 0 .4em; font-size: 20px; }
+    p { margin: 1em 0; }
+    ul, ol { padding-left: 1.45em; }
+    li { margin: .32em 0; }
+    img { max-width: 100%; height: auto; display: block; margin: 1.2rem auto; border-radius: 6px; border: 1px solid var(--line); background: #fff; }
+    figure { margin: 1.6rem 0; }
+    figcaption { color: var(--muted); font-size: 14px; text-align: center; }
+    blockquote { margin: 1.5rem 0; padding: 1rem 1.25rem; border-left: 5px solid var(--quote-line); background: var(--quote-bg); color: #342515; }
+    code { padding: .12em .34em; border-radius: 4px; background: var(--code-bg); color: var(--code-ink); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; font-size: .92em; }
+    pre { overflow: auto; margin: 1.25rem 0; padding: 1rem; border-radius: 7px; border: 1px solid #cfd6e2; background: #111827; color: #e8eef8; font: 14px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; white-space: pre; }
+    pre code { padding: 0; background: transparent; color: inherit; font-size: inherit; }
+    .highlight pre { margin: 0; }
+    .highlight { margin: 1.25rem 0; }
+    table { border-collapse: collapse; width: 100%; margin: 1.25rem 0; display: block; overflow-x: auto; }
+    th, td { border: 1px solid var(--line); padding: .55rem .7rem; vertical-align: top; }
+    th { background: #edf2f8; text-align: left; }
+    .archive-details { margin-top: 38px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+    .archive-details summary { cursor: pointer; color: var(--ink); font-weight: 650; }
+    .archive-details ul { max-height: 260px; overflow: auto; padding-left: 1.2rem; }
+    .archive-details code { overflow-wrap: anywhere; }
+    .warning { color: #7a4c00; }
+    .markdown-fallback > .body { display: contents; }
+    @media (max-width: 700px) {
+      body { font-size: 16px; }
+      .hero { min-height: 260px; padding: 28px 16px; }
+      .shell { width: min(100% - 20px, 1040px); }
+      main { padding: 20px 16px; border-radius: 6px; }
+      ul, ol { padding-left: 1.15em; }
+      pre { font-size: 13px; }
+    }
+    @media print {
+      body { background: #fff; }
+      .hero { min-height: auto; color: #000; background: #fff !important; padding: 0 0 24px; }
+      .source, .dek { color: #333; }
+      main { border: 0; box-shadow: none; padding: 0; }
+      a { color: #000; }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="hero-inner">
+      <div class="source">Archived from <a href="https://medium.com/@bpmxmqd/v8-engine-jsobject-structure-analysis-and-memory-optimization-ideas-be30cfcdcd16">medium.com</a></div>
+      <h1>V8 Engine JSObject Structure Analysis and Memory Optimization Ideas</h1>
+      <p class="dek">The original Medium article is currently inaccessible or deleted.</p>
+    </div>
+  </header>
+  <div class="shell">
+    <div class="meta-bar">
+      <span>Author: Medium / bpmxmqd</span>
+      
+      <span>Medium returned a blocked/deleted page; saved available fallback text.</span>
+      <span>Single-file HTML with embedded images</span>
+    </div>
+    <main>
+      <article>
+<div class="markdown-fallback"><p><a href="https://medium.com/sitemap/sitemap.xml" target="_blank" rel="noopener noreferrer">Sitemap</a></p>
+<p><a href="https://play.google.com/store/apps/details?id=com.medium.reader&amp;referrer=utm_source%3DmobileNavBar&amp;source=post_page---top_nav_layout_nav-----------------------------------------" target="_blank" rel="noopener noreferrer">Open in app</a></p>
+<p>Sign up</p>
+<p><a href="https://medium.com/m/signin?operation=login&amp;redirect=https%3A%2F%2Fmedium.com%2F%40bpmxmqd%2Fv8-engine-jsobject-structure-analysis-and-memory-optimization-ideas-be30cfcdcd16&amp;source=post_page---top_nav_layout_nav-----------------------global_nav------------------" target="_blank" rel="noopener noreferrer">Sign in</a></p>
+<p>[](https://medium.com/?source=post_page---top_nav_layout_nav-----------------------------------------)</p>
+<p>Get app</p>
+<p><a href="https://medium.com/m/signin?operation=register&amp;redirect=https%3A%2F%2Fmedium.com%2Fnew-story&amp;source=---top_nav_layout_nav-----------------------new_post_topnav------------------" target="_blank" rel="noopener noreferrer">Write</a></p>
+<p><a href="https://medium.com/search?source=post_page---top_nav_layout_nav-----------------------------------------" target="_blank" rel="noopener noreferrer">Search</a></p>
+<p>Sign up</p>
+<p><a href="https://medium.com/m/signin?operation=login&amp;redirect=https%3A%2F%2Fmedium.com%2F%40bpmxmqd%2Fv8-engine-jsobject-structure-analysis-and-memory-optimization-ideas-be30cfcdcd16&amp;source=post_page---top_nav_layout_nav-----------------------global_nav------------------" target="_blank" rel="noopener noreferrer">Sign in</a></p>
+<p>!<a href="https://miro.medium.com/v2/resize:fill:64:64/1*dmbNkD5D-u45r44go_cf0g.png" target="_blank" rel="noopener noreferrer">Image 1: Unknown user</a></p>
+<p>Error</p>
+<p>410</p>
+<p>The author deleted this Medium story.</p></div>
+        <details class="archive-details">
+          <summary>Embedded image sources (0)</summary>
+          <ul></ul>
+        </details>
+        
+      </article>
+    </main>
+  </div>
+</body>
+</html>

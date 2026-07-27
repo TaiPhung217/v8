@@ -1,0 +1,19 @@
+[6071:7:0724/215943.859274:ERROR:gpu/ipc/client/command_buffer_proxy_impl.cc:127] ContextResult::kTransientFailure: Failed to send GpuControl.CreateCommandBuffer.
+[0724/215949.417946:WARNING:third_party/crashpad/crashpad/snapshot/linux/exception_snapshot_linux.cc:391] thread ID 1 not found in process
+[0724/215949.418459:ERROR:third_party/crashpad/crashpad/snapshot/linux/process_snapshot_linux.cc:129] thread not found 1
+Received signal 11 SEGV_MAPERR 424242424242
+    #0 0x56a3032898a6 in ___interceptor_backtrace ??:0:0
+    #1 0x56a318eb6ee8 in base::debug::CollectStackTrace(base::span<void const*, 18446744073709551615ul, void const**>) ./../../base/debug/stack_trace_posix.cc:1052:7
+    #2 0x56a318e77317 in StackTrace ./../../base/debug/stack_trace.cc:255:20
+    #3 0x56a318e77317 in base::debug::StackTrace::StackTrace() ./../../base/debug/stack_trace.cc:250:28
+    #4 0x56a318eb6312 in base::debug::(anonymous namespace)::StackDumpSignalHandler(int, siginfo_t*, void*) ./../../base/debug/stack_trace_posix.cc:487:3
+    #5 0x7a1d28845330 in __sigaction ??:?
+#5 0x761d19d0ec03 <unknown>
+  r8: 0000000000000000  r9: 00007ffdd92e88a0 r10: 0000765d1a748ad0 r11: 0000786d1a6888f0
+ r12: 0000000000000004 r13: 0000792d1a699080 r14: 0000750d00000000 r15: 0000750d000007bd
+  di: 0000761d19d0ed0b  si: 00007e9500200075  bp: 00007ffdd92e86d8  bx: 0000750d0262bb85
+  dx: 4343434344454647  ax: 000042424242423b  cx: 4343434344454647  sp: 00007ffdd92e86a0
+  ip: 0000761d19d0ec03 efl: 0000000000010216 cgf: 002b000000000033 erf: 0000000000000006
+ trp: 000000000000000e msk: 0000000000000000 cr2: 0000424242424242
+[end of stack trace]
+../../sandbox/linux/seccomp-bpf-helpers/sigsys_handlers.cc:**CRASHING**:seccomp-bpf failure in syscall nr=0x25 arg1=0x5 arg2=0x7ffdd92e7d30 arg3=0x0 arg4=0x8

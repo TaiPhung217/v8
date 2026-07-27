@@ -1,0 +1,166 @@
+[*] WasmGCTypeAnalyzer::ProcessPhi()
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> is_first_loop_header_evaluation_
+[*] WasmGCTypeAnalyzer::ProcessPhi()
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> is_first_loop_header_evaluation_
+[*] WasmGCTypeAnalyzer::ProcessPhi()
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> is_first_loop_header_evaluation_
+[*] WasmGCTypeAnalyzer::ProcessTypeCast(): known_input_type = (ref 2), target_type = (ref 2)
+[*] WasmGCTypeAnalyzer::ProcessTypeCast(): known_input_type = (ref 2), target_type = (ref 2)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot()
+[*] WasmGCTypeAnalyzer::ProcessTypeCast(): known_input_type = (ref 2), target_type = (ref 2)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot()
+[*] WasmGCTypeAnalyzer::ProcessTypeCast(): known_input_type = (ref 2), target_type = (ref 2)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot()
+[*] WasmGCTypeAnalyzer::ProcessTypeCast(): known_input_type = (ref 2), target_type = (ref 2)
+[*] ===== WasmGCTypeAnalyzer::Run() -> loop reprocessing! =====
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot()
+[*] WasmGCTypeAnalyzer::ProcessTypeCast(): known_input_type = (ref 2), target_type = (ref 2)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot()
+[*] ===========================================================
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot()
+[*] WasmGCTypeAnalyzer::ProcessPhi()
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> union_type = (ref 2)
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, object = 11, input_type = (ref 2)
+[^] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, union_type = (ref 2)
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, object = 11, input_type = (ref 2)
+[^] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, union_type = (ref 2)
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, object = 11, input_type = (ref 2)
+[^] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, union_type = (ref 2)
+[^] WasmGCTypeAnalyzer::ProcessPhi() -> final union_type = (ref 2)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot()
+[*] WasmGCTypeAnalyzer::ProcessPhi()
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> union_type = (ref 2)
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, object = 11, input_type = (ref 2)
+[^] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, union_type = (ref 2)
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, object = 11, input_type = (ref 2)
+[^] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, union_type = (ref 2)
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, object = 11, input_type = (ref 2)
+[^] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, union_type = (ref 2)
+[^] WasmGCTypeAnalyzer::ProcessPhi() -> final union_type = (ref 2)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot()
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot() -> reachable.size() = 2, i = 1, first = (ref 2)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> predecessors[1] = <void>
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot(): final type res = <void>
+[*] ===== WasmGCTypeAnalyzer::Run() -> loop reprocessing! =====
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot()
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot() -> reachable.size() = 2, i = 1, first = <void>
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> predecessors[1] = (ref 2)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot(): final type res = <void>
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot() -> reachable.size() = 2, i = 1, first = <void>
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> predecessors[1] = i32
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot(): final type res = <void>
+[*] WasmGCTypeAnalyzer::ProcessPhi()
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> union_type = i32
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, object = 69, input_type = <void>
+[*] WasmGCTypeAnalyzer::ProcessPhi()
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> union_type = (ref 2)
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, object = 1, input_type = (ref 1)
+[^] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, union_type = (ref struct)
+[^] WasmGCTypeAnalyzer::ProcessPhi() -> final union_type = (ref struct)
+[*] WasmGCTypeAnalyzer::ProcessPhi()
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> union_type = <void>
+[*] WasmGCTypeAnalyzer::ProcessTypeCast(): known_input_type = (ref struct), target_type = (ref 2)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot()
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot() -> reachable.size() = 2, i = 1, first = (ref 2)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> predecessors[1] = (ref 2)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot(): final type res = (ref 2)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot() -> reachable.size() = 2, i = 1, first = i32
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> predecessors[1] = <void>
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot(): final type res = <void>
+[*] ===========================================================
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot()
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot() -> reachable.size() = 2, i = 1, first = (ref 2)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> predecessors[1] = (ref 2)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot(): final type res = (ref 2)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot() -> reachable.size() = 2, i = 1, first = <void>
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> predecessors[1] = i32
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot(): final type res = <void>
+[*] WasmGCTypeAnalyzer::ProcessTypeCast(): known_input_type = (ref 2), target_type = (ref 2)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot()
+[*] WasmGCTypeAnalyzer::ProcessTypeCast(): known_input_type = (ref 2), target_type = (ref 2)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot()
+[*] WasmGCTypeAnalyzer::ProcessTypeCast(): known_input_type = (ref 2), target_type = (ref 2)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot()
+[*] WasmGCTypeAnalyzer::ProcessTypeCast(): known_input_type = (ref 2), target_type = (ref 2)
+[*] ===== WasmGCTypeAnalyzer::Run() -> loop reprocessing! =====
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot()
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot() -> reachable.size() = 2, i = 1, first = (ref 2)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> predecessors[1] = (ref 2)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot(): final type res = (ref 2)
+[*] WasmGCTypeAnalyzer::ProcessTypeCast(): known_input_type = (ref 2), target_type = (ref 2)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot()
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot() -> reachable.size() = 2, i = 1, first = (ref 2)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> predecessors[1] = (ref 2)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot(): final type res = (ref 2)
+[*] ===========================================================
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot()
+[*] WasmGCTypeAnalyzer::ProcessPhi()
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> union_type = (ref 2)
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, object = 11, input_type = (ref 2)
+[^] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, union_type = (ref 2)
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, object = 11, input_type = (ref 2)
+[^] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, union_type = (ref 2)
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, object = 11, input_type = (ref 2)
+[^] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, union_type = (ref 2)
+[^] WasmGCTypeAnalyzer::ProcessPhi() -> final union_type = (ref 2)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot()
+[*] WasmGCTypeAnalyzer::ProcessPhi()
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> union_type = (ref 2)
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, object = 11, input_type = (ref 2)
+[^] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, union_type = (ref 2)
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, object = 11, input_type = (ref 2)
+[^] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, union_type = (ref 2)
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, object = 11, input_type = (ref 2)
+[^] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, union_type = (ref 2)
+[^] WasmGCTypeAnalyzer::ProcessPhi() -> final union_type = (ref 2)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot()
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot() -> reachable.size() = 2, i = 1, first = (ref 2)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> predecessors[1] = <void>
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot(): final type res = <void>
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot() -> reachable.size() = 2, i = 1, first = (ref 2)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> predecessors[1] = (ref 2)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot(): final type res = (ref 2)
+[*] ===== WasmGCTypeAnalyzer::Run() -> loop reprocessing! =====
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot()
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot() -> reachable.size() = 2, i = 1, first = <void>
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> predecessors[1] = (ref 2)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot(): final type res = <void>
+[*] WasmGCTypeAnalyzer::ProcessPhi()
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> union_type = i32
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, object = 69, input_type = <void>
+[*] WasmGCTypeAnalyzer::ProcessPhi()
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> union_type = (ref 2)
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, object = 1, input_type = (ref 1)
+[^] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, union_type = (ref struct)
+[^] WasmGCTypeAnalyzer::ProcessPhi() -> final union_type = (ref struct)
+[*] WasmGCTypeAnalyzer::ProcessPhi()
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> union_type = <void>
+[*] WasmGCTypeAnalyzer::ProcessTypeCast(): known_input_type = (ref struct), target_type = (ref 2)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot()
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot() -> reachable.size() = 2, i = 1, first = (ref 2)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> predecessors[1] = (ref 2)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot(): final type res = (ref 2)
+[*] ===========================================================
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot()
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot() -> reachable.size() = 2, i = 1, first = (ref 2)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> predecessors[1] = <void>
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot(): final type res = <void>
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot() -> reachable.size() = 2, i = 1, first = (ref 2)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> predecessors[1] = (ref 2)
+[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot(): final type res = (ref 2)
+[*] WasmGCTypeAnalyzer::ProcessPhi()
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> union_type = (ref 2)
+[*] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, object = 11, input_type = (ref 2)
+[^] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, union_type = (ref 2)
+[^] WasmGCTypeAnalyzer::ProcessPhi() -> final union_type = (ref 2)
+[!] REDUCE_INPUT_GRAPH(WasmTypeCast): (ref struct) -> (ref 2)
+[!] REDUCE_INPUT_GRAPH(WasmTypeCast): (ref 2) -> (ref 2)
+[!] REDUCE_INPUT_GRAPH(WasmTypeCast): (ref 2) -> (ref 2)
+[!] REDUCE_INPUT_GRAPH(WasmTypeCast): (ref 2) -> (ref 2)
+[!] REDUCE_INPUT_GRAPH(WasmTypeCast): (ref 2) -> (ref 2)
+wasm-function[1]:0xe3: RuntimeError: illegal cast
+RuntimeError: illegal cast
+    at confuser (wasm://wasm/03e8b33e:wasm-function[1]:0xe3)
+    at caged_write (wasm://wasm/03e8b33e:wasm-function[4]:0x14c)
+    at ./test.js:2512:1
+

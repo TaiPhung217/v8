@@ -1,0 +1,133 @@
+=================================================================
+==106596==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x126f6f4e50e0 at pc 0x7ffd68670966 bp 0x00c1cbffdca0 sp 0x00c1cbffdce8
+READ of size 1 at 0x126f6f4e50e0 thread T0
+[108004:108316:0210/232406.357:ERROR:CONSOLE:1] "Request Storage.getStorageKey failed. {"code":-32602,"message":"Frame tree node for given frame not found"}", source: devtools://devtools/bundled/core/protocol_client/protocol_client.js (1)
+    #0 0x7ffd68670965 in v8_inspector::InjectedScript::wrapObjectMirror(class v8_inspector::ValueMirror const &, class v8_inspector::String16 const &, struct v8_inspector::WrapOptions const &, class v8::MaybeLocal<class v8::Value>, int, class std::__Cr::unique_ptr<class v8_inspector::protocol::Runtime::RemoteObject, struct std::__Cr::default_delete<class v8_inspector::protocol::Runtime::RemoteObject>> *) C:\b\s\w\ir\cache\builder\src\v8\src\inspector\injected-script.cc:628:30
+    #1 0x7ffd68673536 in v8_inspector::InjectedScript::wrapObject(class v8::Local<class v8::Value>, class v8_inspector::String16 const &, struct v8_inspector::WrapOptions const &, class v8::MaybeLocal<class v8::Value>, int, class std::__Cr::unique_ptr<class v8_inspector::protocol::Runtime::RemoteObject, struct std::__Cr::default_delete<class v8_inspector::protocol::Runtime::RemoteObject>> *) C:\b\s\w\ir\cache\builder\src\v8\src\inspector\injected-script.cc:619:10
+    #2 0x7ffd686733b4 in v8_inspector::InjectedScript::wrapObject(class v8::Local<class v8::Value>, class v8_inspector::String16 const &, struct v8_inspector::WrapOptions const &, class std::__Cr::unique_ptr<class v8_inspector::protocol::Runtime::RemoteObject, struct std::__Cr::default_delete<class v8_inspector::protocol::Runtime::RemoteObject>> *) C:\b\s\w\ir\cache\builder\src\v8\src\inspector\injected-script.cc:606:10
+    #3 0x7ffd6873e2b8 in v8_inspector::V8InspectorSessionImpl::wrapObject(class v8::Local<class v8::Context>, class v8::Local<class v8::Value>, class v8_inspector::String16 const &, bool) C:\b\s\w\ir\cache\builder\src\v8\src\inspector\v8-inspector-session-impl.cc:317:19
+    #4 0x7ffd6869ef53 in v8_inspector::V8ConsoleMessage::wrapArguments(class v8_inspector::V8InspectorSessionImpl *, bool) const C:\b\s\w\ir\cache\builder\src\v8\src\inspector\v8-console-message.cc:300:20
+    #5 0x7ffd6869fed2 in v8_inspector::V8ConsoleMessage::reportToFrontend(class v8_inspector::protocol::Runtime::Frontend *, class v8_inspector::V8InspectorSessionImpl *, bool) const C:\b\s\w\ir\cache\builder\src\v8\src\inspector\v8-console-message.cc:366:21
+    #6 0x7ffd68760dc6 in v8_inspector::V8RuntimeAgentImpl::reportMessage C:\b\s\w\ir\cache\builder\src\v8\src\inspector\v8-runtime-agent-impl.cc:1210
+    #7 0x7ffd68760dc6 in v8_inspector::V8RuntimeAgentImpl::enable(void) C:\b\s\w\ir\cache\builder\src\v8\src\inspector\v8-runtime-agent-impl.cc:1126:10
+    #8 0x7ffd686579cd in v8_inspector::protocol::Runtime::DomainDispatcherImpl::enable(class v8_crdtp::Dispatchable const &) C:\b\s\w\ir\cache\builder\src\out\069a-Win_ASan_Releas\gen\v8\src\inspector\protocol\Runtime.cpp:943:44
+    #9 0x7ffd687aa46f in std::__Cr::__function::__policy_func<void ()>::operator() C:\b\s\w\ir\cache\builder\src\third_party\libc++\src\include\__functional\function.h:502
+    #10 0x7ffd687aa46f in std::__Cr::function<void ()>::operator() C:\b\s\w\ir\cache\builder\src\third_party\libc++\src\include\__functional\function.h:754
+    #11 0x7ffd687aa46f in v8_crdtp::UberDispatcher::DispatchResult::Run(void) C:\b\s\w\ir\cache\builder\src\v8\third_party\inspector_protocol\crdtp\dispatch.cc:509:3
+    #12 0x7ffd6873f13e in v8_inspector::V8InspectorSessionImpl::dispatchProtocolMessage(class v8_inspector::StringView) C:\b\s\w\ir\cache\builder\src\v8\src\inspector\v8-inspector-session-impl.cc:388:39
+    #13 0x7ffd818c17be in blink::DevToolsSession::DispatchProtocolCommandImpl(int, class blink::String const &, class base::span<unsigned char const, -1, unsigned char const *>) C:\b\s\w\ir\cache\builder\src\third_party\blink\renderer\core\inspector\devtools_session.cc:272:18
+    #14 0x7ffd818c122b in blink::DevToolsSession::DispatchProtocolCommand(int, class blink::String const &, class base::span<unsigned char const, -1, unsigned char const *>) C:\b\s\w\ir\cache\builder\src\third_party\blink\renderer\core\inspector\devtools_session.cc:243:10
+    #15 0x7ffd6e5a9499 in blink::mojom::blink::DevToolsSessionStubDispatch::Accept(class blink::mojom::blink::DevToolsSession *, class mojo::Message *) C:\b\s\w\ir\cache\builder\src\out\069a-Win_ASan_Releas\gen\third_party\blink\public\mojom\devtools\devtools_agent.mojom-blink.cc:1542:13
+    #16 0x7ffd7535bd94 in mojo::InterfaceEndpointClient::HandleValidatedMessage(class mojo::Message *) C:\b\s\w\ir\cache\builder\src\mojo\public\cpp\bindings\lib\interface_endpoint_client.cc:1085:54
+    #17 0x7ffd75358add in mojo::MessageDispatcher::Accept(class mojo::Message *) C:\b\s\w\ir\cache\builder\src\mojo\public\cpp\bindings\lib\message_dispatcher.cc:44:19
+    #18 0x7ffd7536247e in mojo::InterfaceEndpointClient::HandleIncomingMessage(class mojo::Message *) C:\b\s\w\ir\cache\builder\src\mojo\public\cpp\bindings\lib\interface_endpoint_client.cc:747:20
+    #19 0x7ffd78d5dbb6 in IPC::ChannelAssociatedGroupController::AcceptOnEndpointThread C:\b\s\w\ir\cache\builder\src\ipc\ipc_mojo_bootstrap.cc:1199:24
+    #20 0x7ffd78d600d1 in base::internal::DecayedFunctorTraits<void (IPC::ChannelAssociatedGroupController::*)(mojo::Message, IPC::`anonymous namespace'::ScopedUrgentMessageNotification),IPC::ChannelAssociatedGroupController *&&,mojo::Message &&,IPC::`anonymous namespace'::ScopedUrgentMessageNotification &&>::Invoke C:\b\s\w\ir\cache\builder\src\base\functional\bind_internal.h:740
+    #21 0x7ffd78d600d1 in base::internal::InvokeHelper<0,base::internal::FunctorTraits<void (IPC::ChannelAssociatedGroupController::*&&)(mojo::Message, IPC::`anonymous namespace'::ScopedUrgentMessageNotification),IPC::ChannelAssociatedGroupController *&&,mojo::Message &&,IPC::`anonymous namespace'::ScopedUrgentMessageNotification &&>,void,0,1,2>::MakeItSo C:\b\s\w\ir\cache\builder\src\base\functional\bind_internal.h:932
+    #22 0x7ffd78d600d1 in base::internal::Invoker<base::internal::FunctorTraits<void (IPC::ChannelAssociatedGroupController::*&&)(mojo::Message, IPC::`anonymous namespace'::ScopedUrgentMessageNotification),IPC::ChannelAssociatedGroupController *&&,mojo::Message &&,IPC::`anonymous namespace'::ScopedUrgentMessageNotification &&>,base::internal::BindState<1,1,0,void (IPC::ChannelAssociatedGroupController::*)(mojo::Message, IPC::`anonymous namespace'::ScopedUrgentMessageNotification),scoped_refptr<IPC::ChannelAssociatedGroupController>,mojo::Message,IPC::`anonymous namespace'::ScopedUrgentMessageNotification>,void ()>::RunImpl C:\b\s\w\ir\cache\builder\src\base\functional\bind_internal.h:1069
+    #23 0x7ffd78d600d1 in base::internal::Invoker<base::internal::FunctorTraits<void (IPC::ChannelAssociatedGroupController::*&&)(mojo::Message, IPC::`anonymous namespace'::ScopedUrgentMessageNotification),IPC::ChannelAssociatedGroupController *&&,mojo::Message &&,IPC::`anonymous namespace'::ScopedUrgentMessageNotification &&>,base::internal::BindState<1,1,0,void (IPC::ChannelAssociatedGroupController::*)(mojo::Message, IPC::`anonymous namespace'::ScopedUrgentMessageNotification),scoped_refptr<IPC::ChannelAssociatedGroupController>,mojo::Message,IPC::`anonymous namespace'::ScopedUrgentMessageNotification>,void ()>::RunOnce C:\b\s\w\ir\cache\builder\src\base\functional\bind_internal.h:982:12
+    #24 0x7ffd75636a98 in base::OnceCallback<void ()>::Run C:\b\s\w\ir\cache\builder\src\base\functional\callback.h:155
+    #25 0x7ffd75636a98 in base::TaskAnnotator::RunTaskImpl(struct base::PendingTask &) C:\b\s\w\ir\cache\builder\src\base\task\common\task_annotator.cc:229:34
+    #26 0x7ffd75607066 in base::TaskAnnotator::RunTask C:\b\s\w\ir\cache\builder\src\base\task\common\task_annotator.h:112
+    #27 0x7ffd75607066 in base::sequence_manager::internal::ThreadControllerWithMessagePumpImpl::DoWorkImpl(class base::LazyNow *) C:\b\s\w\ir\cache\builder\src\base\task\sequence_manager\thread_controller_with_message_pump_impl.cc:472:23
+    #28 0x7ffd75605ef3 in base::sequence_manager::internal::ThreadControllerWithMessagePumpImpl::DoWork(void) C:\b\s\w\ir\cache\builder\src\base\task\sequence_manager\thread_controller_with_message_pump_impl.cc:346:40
+    #29 0x7ffd75770c20 in base::MessagePumpDefault::Run(class base::MessagePump::Delegate *) C:\b\s\w\ir\cache\builder\src\base\message_loop\message_pump_default.cc:42:55
+    #30 0x7ffd75608d6f in base::sequence_manager::internal::ThreadControllerWithMessagePumpImpl::Run(bool, class base::TimeDelta) C:\b\s\w\ir\cache\builder\src\base\task\sequence_manager\thread_controller_with_message_pump_impl.cc:647:12
+    #31 0x7ffd756ae6bc in base::RunLoop::Run(class base::Location const &) C:\b\s\w\ir\cache\builder\src\base\run_loop.cc:135:14
+    #32 0x7ffd7fb95fc5 in content::RendererMain(struct content::MainFunctionParams) C:\b\s\w\ir\cache\builder\src\content\renderer\renderer_main.cc:369:16
+    #33 0x7ffd712a785d in content::RunOtherNamedProcessTypeMain(class std::__Cr::basic_string<char, struct std::__Cr::char_traits<char>, class std::__Cr::allocator<char>> const &, struct content::MainFunctionParams, class content::ContentMainDelegate *) C:\b\s\w\ir\cache\builder\src\content\app\content_main_runner_impl.cc:762:14
+    #34 0x7ffd712a9efb in content::ContentMainRunnerImpl::Run(void) C:\b\s\w\ir\cache\builder\src\content\app\content_main_runner_impl.cc:1147:10
+    #35 0x7ffd7129ddcf in content::RunContentProcess(struct content::ContentMainParams, class content::ContentMainRunner *) C:\b\s\w\ir\cache\builder\src\content\app\content_main.cc:358:36
+    #36 0x7ffd7129e572 in content::ContentMain(struct content::ContentMainParams) C:\b\s\w\ir\cache\builder\src\content\app\content_main.cc:371:10
+    #37 0x7ffd612f2b06 in ChromeMain C:\b\s\w\ir\cache\builder\src\chrome\app\chrome_main.cc:191:12
+    #38 0x7ff654014807 in MainDllLoader::Launch(struct HINSTANCE__*, class base::TimeTicks) C:\b\s\w\ir\cache\builder\src\chrome\app\main_dll_loader_win.cc:204:12
+    #39 0x7ff654012074 in main C:\b\s\w\ir\cache\builder\src\chrome\app\chrome_exe_main_win.cc:351:20
+    #40 0x7ff654509fbf in invoke_main D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_common.inl:78
+    #41 0x7ff654509fbf in __scrt_common_main_seh D:\a\_work\1\s\src\vctools\crt\vcstartup\src\startup\exe_common.inl:288
+    #42 0x7ffe9f65e8d6  (C:\WINDOWS\System32\KERNEL32.DLL+0x18002e8d6)
+    #43 0x7ffea024c53b  (C:\WINDOWS\SYSTEM32\ntdll.dll+0x18008c53b)
+
+0x126f6f4e50e0 is located 328 bytes after 216-byte region [0x126f6f4e4ec0,0x126f6f4e4f98)
+allocated by thread T0 here:
+    #0 0x7ffdb9f0e58f  (C:\Users\Administrator\Desktop\asan\chromium-146.0.7680.0-win64-asan\clang_rt.asan_dynamic-x86_64.dll+0x18005e58f)
+    #1 0x7ffd68739112 in v8_inspector::V8InspectorSessionImpl::create(class v8_inspector::V8InspectorImpl *, int, int, class v8_inspector::V8Inspector::Channel *, class v8_inspector::StringView, enum v8_inspector::V8Inspector::ClientTrustLevel, class std::__Cr::shared_ptr<class v8_inspector::V8DebuggerBarrier>) C:\b\s\w\ir\cache\builder\src\v8\src\inspector\v8-inspector-session-impl.cc:98:10
+    #2 0x7ffd6872daee in v8_inspector::V8InspectorImpl::connectImpl(int, class v8_inspector::V8Inspector::Channel *, class v8_inspector::StringView, enum v8_inspector::V8Inspector::ClientTrustLevel, enum v8_inspector::V8Inspector::SessionPauseState) C:\b\s\w\ir\cache\builder\src\v8\src\inspector\v8-inspector-impl.cc:183:37
+    #3 0x7ffd6872de44 in v8_inspector::V8InspectorImpl::connectShared(int, class v8_inspector::V8Inspector::Channel *, class v8_inspector::StringView, enum v8_inspector::V8Inspector::ClientTrustLevel, enum v8_inspector::V8Inspector::SessionPauseState) C:\b\s\w\ir\cache\builder\src\v8\src\inspector\v8-inspector-impl.cc:157:51
+    #4 0x7ffd818c0799 in blink::DevToolsSession::ConnectToV8(class v8_inspector::V8Inspector *, int) C:\b\s\w\ir\cache\builder\src\third_party\blink\renderer\core\inspector\devtools_session.cc:192:28
+    #5 0x7ffd85115975 in blink::WebDevToolsAgentImpl::AttachSession(class blink::DevToolsSession *, bool) C:\b\s\w\ir\cache\builder\src\third_party\blink\renderer\core\exported\web_dev_tools_agent_impl.cc:326:12
+    #6 0x7ffd818bd691 in blink::DevToolsSession::DevToolsSession(class blink::DevToolsAgent *, class mojo::PendingAssociatedRemote<class blink::mojom::blink::DevToolsSessionHost>, class mojo::PendingAssociatedReceiver<class blink::mojom::blink::DevToolsSession>, class mojo::PendingReceiver<class blink::mojom::blink::DevToolsSession>, class mojo::StructPtr<class blink::mojom::blink::DevToolsSessionState>, class blink::String const &, bool, bool, class blink::String const &, bool, class scoped_refptr<class base::SequencedTaskRunner>) C:\b\s\w\ir\cache\builder\src\third_party\blink\renderer\core\inspector\devtools_session.cc:177:20
+    #7 0x7ffd818e1795 in cppgc::MakeGarbageCollectedTrait<class blink::DevToolsSession>::Call<class blink::DevToolsAgent *, class mojo::PendingAssociatedRemote<class blink::mojom::blink::DevToolsSessionHost>, class mojo::PendingAssociatedReceiver<class blink::mojom::blink::DevToolsSession>, class mojo::PendingReceiver<class blink::mojom::blink::DevToolsSession>, class mojo::StructPtr<class blink::mojom::blink::DevToolsSessionState>, class blink::String const &, bool &, bool &, class blink::String const &, bool &, class scoped_refptr<class base::SingleThreadTaskRunner>>(class cppgc::AllocationHandle &, class blink::DevToolsAgent *&&, class mojo::PendingAssociatedRemote<class blink::mojom::blink::DevToolsSessionHost> &&, class mojo::PendingAssociatedReceiver<class blink::mojom::blink::DevToolsSession> &&, class mojo::PendingReceiver<class blink::mojom::blink::DevToolsSession> &&, class mojo::StructPtr<class blink::mojom::blink::DevToolsSessionState> &&, class blink::String const &, bool &, bool &, class blink::String const &, bool &, class scoped_refptr<class base::SingleThreadTaskRunner> &&) C:\b\s\w\ir\cache\builder\src\v8\include\cppgc\allocation.h:239:32
+    #8 0x7ffd818d52af in cppgc::MakeGarbageCollected C:\b\s\w\ir\cache\builder\src\v8\include\cppgc\allocation.h:277
+    #9 0x7ffd818d52af in blink::MakeGarbageCollected C:\b\s\w\ir\cache\builder\src\third_party\blink\renderer\platform\heap\garbage_collected.h:37
+    #10 0x7ffd818d52af in blink::DevToolsAgent::AttachDevToolsSessionImpl(class mojo::PendingAssociatedRemote<class blink::mojom::blink::DevToolsSessionHost>, class mojo::PendingAssociatedReceiver<class blink::mojom::blink::DevToolsSession>, class mojo::PendingReceiver<class blink::mojom::blink::DevToolsSession>, class mojo::StructPtr<class blink::mojom::blink::DevToolsSessionState>, class blink::String const &, bool, bool, class blink::String const &, bool) C:\b\s\w\ir\cache\builder\src\third_party\blink\renderer\core\inspector\devtools_agent.cc:258:30
+    #11 0x7ffd818d6093 in blink::DevToolsAgent::AttachDevToolsSession(class mojo::PendingAssociatedRemote<class blink::mojom::blink::DevToolsSessionHost>, class mojo::PendingAssociatedReceiver<class blink::mojom::blink::DevToolsSession>, class mojo::PendingReceiver<class blink::mojom::blink::DevToolsSession>, class mojo::StructPtr<class blink::mojom::blink::DevToolsSessionState>, class blink::String const &, bool, bool, class blink::String const &, bool) C:\b\s\w\ir\cache\builder\src\third_party\blink\renderer\core\inspector\devtools_agent.cc:297:5
+    #12 0x7ffd6e5a6da4 in blink::mojom::blink::DevToolsAgentStubDispatch::Accept(class blink::mojom::blink::DevToolsAgent *, class mojo::Message *) C:\b\s\w\ir\cache\builder\src\out\069a-Win_ASan_Releas\gen\third_party\blink\public\mojom\devtools\devtools_agent.mojom-blink.cc:649:13
+    #13 0x7ffd7535bd94 in mojo::InterfaceEndpointClient::HandleValidatedMessage(class mojo::Message *) C:\b\s\w\ir\cache\builder\src\mojo\public\cpp\bindings\lib\interface_endpoint_client.cc:1085:54
+    #14 0x7ffd75358add in mojo::MessageDispatcher::Accept(class mojo::Message *) C:\b\s\w\ir\cache\builder\src\mojo\public\cpp\bindings\lib\message_dispatcher.cc:44:19
+    #15 0x7ffd7536247e in mojo::InterfaceEndpointClient::HandleIncomingMessage(class mojo::Message *) C:\b\s\w\ir\cache\builder\src\mojo\public\cpp\bindings\lib\interface_endpoint_client.cc:747:20
+    #16 0x7ffd78d5dbb6 in IPC::ChannelAssociatedGroupController::AcceptOnEndpointThread C:\b\s\w\ir\cache\builder\src\ipc\ipc_mojo_bootstrap.cc:1199:24
+    #17 0x7ffd78d600d1 in base::internal::DecayedFunctorTraits<void (IPC::ChannelAssociatedGroupController::*)(mojo::Message, IPC::`anonymous namespace'::ScopedUrgentMessageNotification),IPC::ChannelAssociatedGroupController *&&,mojo::Message &&,IPC::`anonymous namespace'::ScopedUrgentMessageNotification &&>::Invoke C:\b\s\w\ir\cache\builder\src\base\functional\bind_internal.h:740
+    #18 0x7ffd78d600d1 in base::internal::InvokeHelper<0,base::internal::FunctorTraits<void (IPC::ChannelAssociatedGroupController::*&&)(mojo::Message, IPC::`anonymous namespace'::ScopedUrgentMessageNotification),IPC::ChannelAssociatedGroupController *&&,mojo::Message &&,IPC::`anonymous namespace'::ScopedUrgentMessageNotification &&>,void,0,1,2>::MakeItSo C:\b\s\w\ir\cache\builder\src\base\functional\bind_internal.h:932
+    #19 0x7ffd78d600d1 in base::internal::Invoker<base::internal::FunctorTraits<void (IPC::ChannelAssociatedGroupController::*&&)(mojo::Message, IPC::`anonymous namespace'::ScopedUrgentMessageNotification),IPC::ChannelAssociatedGroupController *&&,mojo::Message &&,IPC::`anonymous namespace'::ScopedUrgentMessageNotification &&>,base::internal::BindState<1,1,0,void (IPC::ChannelAssociatedGroupController::*)(mojo::Message, IPC::`anonymous namespace'::ScopedUrgentMessageNotification),scoped_refptr<IPC::ChannelAssociatedGroupController>,mojo::Message,IPC::`anonymous namespace'::ScopedUrgentMessageNotification>,void ()>::RunImpl C:\b\s\w\ir\cache\builder\src\base\functional\bind_internal.h:1069
+    #20 0x7ffd78d600d1 in base::internal::Invoker<base::internal::FunctorTraits<void (IPC::ChannelAssociatedGroupController::*&&)(mojo::Message, IPC::`anonymous namespace'::ScopedUrgentMessageNotification),IPC::ChannelAssociatedGroupController *&&,mojo::Message &&,IPC::`anonymous namespace'::ScopedUrgentMessageNotification &&>,base::internal::BindState<1,1,0,void (IPC::ChannelAssociatedGroupController::*)(mojo::Message, IPC::`anonymous namespace'::ScopedUrgentMessageNotification),scoped_refptr<IPC::ChannelAssociatedGroupController>,mojo::Message,IPC::`anonymous namespace'::ScopedUrgentMessageNotification>,void ()>::RunOnce C:\b\s\w\ir\cache\builder\src\base\functional\bind_internal.h:982:12
+    #21 0x7ffd75636a98 in base::OnceCallback<void ()>::Run C:\b\s\w\ir\cache\builder\src\base\functional\callback.h:155
+    #22 0x7ffd75636a98 in base::TaskAnnotator::RunTaskImpl(struct base::PendingTask &) C:\b\s\w\ir\cache\builder\src\base\task\common\task_annotator.cc:229:34
+    #23 0x7ffd75607066 in base::TaskAnnotator::RunTask C:\b\s\w\ir\cache\builder\src\base\task\common\task_annotator.h:112
+    #24 0x7ffd75607066 in base::sequence_manager::internal::ThreadControllerWithMessagePumpImpl::DoWorkImpl(class base::LazyNow *) C:\b\s\w\ir\cache\builder\src\base\task\sequence_manager\thread_controller_with_message_pump_impl.cc:472:23
+    #25 0x7ffd75605ef3 in base::sequence_manager::internal::ThreadControllerWithMessagePumpImpl::DoWork(void) C:\b\s\w\ir\cache\builder\src\base\task\sequence_manager\thread_controller_with_message_pump_impl.cc:346:40
+    #26 0x7ffd75770c20 in base::MessagePumpDefault::Run(class base::MessagePump::Delegate *) C:\b\s\w\ir\cache\builder\src\base\message_loop\message_pump_default.cc:42:55
+    #27 0x7ffd75608d6f in base::sequence_manager::internal::ThreadControllerWithMessagePumpImpl::Run(bool, class base::TimeDelta) C:\b\s\w\ir\cache\builder\src\base\task\sequence_manager\thread_controller_with_message_pump_impl.cc:647:12
+    #28 0x7ffd756ae6bc in base::RunLoop::Run(class base::Location const &) C:\b\s\w\ir\cache\builder\src\base\run_loop.cc:135:14
+    #29 0x7ffd7fb95fc5 in content::RendererMain(struct content::MainFunctionParams) C:\b\s\w\ir\cache\builder\src\content\renderer\renderer_main.cc:369:16
+    #30 0x7ffd712a785d in content::RunOtherNamedProcessTypeMain(class std::__Cr::basic_string<char, struct std::__Cr::char_traits<char>, class std::__Cr::allocator<char>> const &, struct content::MainFunctionParams, class content::ContentMainDelegate *) C:\b\s\w\ir\cache\builder\src\content\app\content_main_runner_impl.cc:762:14
+    #31 0x7ffd712a9efb in content::ContentMainRunnerImpl::Run(void) C:\b\s\w\ir\cache\builder\src\content\app\content_main_runner_impl.cc:1147:10
+    #32 0x7ffd7129ddcf in content::RunContentProcess(struct content::ContentMainParams, class content::ContentMainRunner *) C:\b\s\w\ir\cache\builder\src\content\app\content_main.cc:358:36
+    #33 0x7ffd7129e572 in content::ContentMain(struct content::ContentMainParams) C:\b\s\w\ir\cache\builder\src\content\app\content_main.cc:371:10
+    #34 0x7ffd612f2b06 in ChromeMain C:\b\s\w\ir\cache\builder\src\chrome\app\chrome_main.cc:191:12
+
+SUMMARY: AddressSanitizer: heap-buffer-overflow C:\b\s\w\ir\cache\builder\src\v8\src\inspector\injected-script.cc:628:30 in v8_inspector::InjectedScript::wrapObjectMirror(class v8_inspector::ValueMirror const &, class v8_inspector::String16 const &, struct v8_inspector::WrapOptions const &, class v8::MaybeLocal<class v8::Value>, int, class std::__Cr::unique_ptr<class v8_inspector::protocol::Runtime::RemoteObject, struct std::__Cr::default_delete<class v8_inspector::protocol::Runtime::RemoteObject>> *)
+Shadow bytes around the buggy address:
+  0x126f6f4e4e00: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+  0x126f6f4e4e80: fa fa fa fa fa fa f7 fa 00 00 00 00 00 00 00 00
+  0x126f6f4e4f00: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+  0x126f6f4e4f80: 00 00 00 fa fa fa fa fa fa fa fa fa fa fa f7 fa
+  0x126f6f4e5000: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+=>0x126f6f4e5080: 00 00 00 00 00 00 00 00 00 fa fa fa[fa]fa fa fa
+  0x126f6f4e5100: fa fa fa fa fa fa f7 fa fa fa fa fa fa fa fa fa
+  0x126f6f4e5180: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+  0x126f6f4e5200: fa fa fa fa fa fa fa fa fa fa fa fa fa fa f7 fa
+  0x126f6f4e5280: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+  0x126f6f4e5300: fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa fa
+Shadow byte legend (one shadow byte represents 8 application bytes):
+  Addressable:           00
+  Partially addressable: 01 02 03 04 05 06 07
+  Heap left redzone:       fa
+  Freed heap region:       fd
+  Stack left redzone:      f1
+  Stack mid redzone:       f2
+  Stack right redzone:     f3
+  Stack after return:      f5
+  Stack use after scope:   f8
+  Global redzone:          f9
+  Global init order:       f6
+  Poisoned by user:        f7
+  Container overflow:      fc
+  Array cookie:            ac
+  Intra object redzone:    bb
+  ASan internal:           fe
+  Left alloca redzone:     ca
+  Right alloca redzone:    cb
+
+==106596==ADDITIONAL INFO
+
+==106596==Note: Please include this section with the ASan report.
+Task trace:
+    #0 0x7ffd78d579d9 in IPC::ChannelAssociatedGroupController::Accept(class mojo::Message *) C:\b\s\w\ir\cache\builder\src\ipc\ipc_mojo_bootstrap.cc:1138:13
+
+
+Command line: `"C:\Users\Administrator\Desktop\asan\chromium-146.0.7680.0-win64-asan\chrome.exe" --type=renderer --user-data-dir="C:\Users\Administrator\AppData\Local\Temp\asan-test" --no-pre-read-main-dll --no-sandbox --file-url-path-alias="/gen=C:\Users\Administrator\Desktop\asan\chromium-146.0.7680.0-win64-asan\gen" --video-capture-use-gpu-memory-buffer --lang=en-US --device-scale-factor=1.25 --num-raster-threads=4 --enable-main-frame-before-activation --renderer-client-id=5 --time-ticks-at-unix-epoch=-1770484358770289 --launch-time-ticks=274285572705 --metrics-shmem-handle=3768,i,14645066216493586080,10896316841859557786,2097152 --field-trial-handle=1924,i,7683353815545178343,9456304717809356745,262144 --variations-seed-version --pseudonymization-salt-handle=1920,i,7030985975182536087,16123619788911528534,4 --trace-process-track-uuid=3190708990997080739 --enable-logging=stderr --mojo-platform-channel-handle=3772 /prefetch:1`
+
+
+==106596==END OF ADDITIONAL INFO
+
+==106596==ABORTING

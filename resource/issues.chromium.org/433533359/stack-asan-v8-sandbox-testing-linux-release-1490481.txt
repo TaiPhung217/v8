@@ -1,0 +1,72 @@
+.../builds/asan-v8-sandbox-testing-linux-release-1490481$ ./chrome --enable-features=SharedArrayBuffer --no-sandbox --disable-in-process-stack-traces exp.html
+[427332:427346:0725/073333.851028:ERROR:gpu/ipc/client/command_buffer_proxy_impl.cc:127] ContextResult::kTransientFailure: Failed to send GpuControl.CreateCommandBuffer.
+[0725/073337.626904:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq: No such file or directory (2)
+[0725/073337.627054:ERROR:third_party/crashpad/crashpad/util/file/file_io_posix.cc:145] open /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq: No such file or directory (2)
+AddressSanitizer:DEADLYSIGNAL
+=================================================================
+==427332==ERROR: AddressSanitizer: SEGV on unknown address 0x424242424242 (pc 0x7ed3fc175c03 bp 0x7fff23e0c038 sp 0x7fff23e0c000 T0)
+==427332==The signal is caused by a WRITE memory access.
+.../builds/asan-v8-sandbox-testing-linux-release-1490481//../../third_party/llvm-build/Release+Asserts/bin/llvm-symbolizer: error: '[anon:v8]': No such file or directory
+[427267:427281:0725/073341.414844:ERROR:google_apis/gcm/engine/registration_request.cc:274] Registration URL fetching failed.
+[427267:427281:0725/073341.415418:ERROR:google_apis/gcm/engine/registration_request.cc:274] Registration URL fetching failed.
+[427267:427281:0725/073341.415825:ERROR:google_apis/gcm/engine/registration_request.cc:274] Registration URL fetching failed.
+    #0 0x7ed3fc175c03  ([anon:v8]+0x8c03)
+    #1 0x65182d1700c5 in Builtins_JSToWasmWrapperAsm setup-isolate-deserialize.cc
+    #2 0x65182d252e73 in Builtins_JSToWasmWrapper setup-isolate-deserialize.cc
+    #3 0x65188d087257  ([anon:v8]+0x7257)
+    #4 0x65182d10e7ad in Builtins_AsyncFunctionAwaitResolveClosure setup-isolate-deserialize.cc
+    #5 0x65182d1f80e9 in Builtins_PromiseFulfillReactionJob setup-isolate-deserialize.cc
+    #6 0x65182d0fc2bb in Builtins_RunMicrotasks setup-isolate-deserialize.cc
+    #7 0x65182d0c84aa in Builtins_JSRunMicrotasksEntry setup-isolate-deserialize.cc
+    #8 0x651828c02fe8 in Call v8/src/execution/simulator.h:212:12
+    #9 0x651828c02fe8 in v8::internal::(anonymous namespace)::Invoke(v8::internal::Isolate*, v8::internal::(anonymous namespace)::InvokeParams const&) v8/src/execution/execution.cc:460:41
+    #10 0x651828c065cd in v8::internal::(anonymous namespace)::InvokeWithTryCatch(v8::internal::Isolate*, v8::internal::(anonymous namespace)::InvokeParams const&) v8/src/execution/execution.cc:502:18
+    #11 0x651828c06a25 in v8::internal::Execution::TryRunMicrotasks(v8::internal::Isolate*, v8::internal::MicrotaskQueue*) v8/src/execution/execution.cc:606:10
+    #12 0x651828c9ffe7 in v8::internal::MicrotaskQueue::RunMicrotasks(v8::internal::Isolate*) v8/src/execution/microtask-queue.cc:185:22
+    #13 0x651828c9fa52 in v8::internal::MicrotaskQueue::PerformCheckpointInternal(v8::Isolate*) v8/src/execution/microtask-queue.cc:129:3
+    #14 0x651844934cb0 in blink::V8ScriptRunner::CallFunction(v8::Local<v8::Function>, blink::ExecutionContext*, v8::Local<v8::Value>, int, v8::Local<v8::Value>*, v8::Isolate*) third_party/blink/renderer/bindings/core/v8/v8_script_runner.cc:864:1
+    #15 0x651849cc855e in CallInternal third_party/blink/renderer/bindings/core/v8/callback_invoke_helper.cc:137:12
+    #16 0x651849cc855e in blink::bindings::CallbackInvokeHelper<blink::CallbackFunctionWithTaskAttributionBase, (blink::bindings::CallbackInvokeHelperMode)0, (blink::bindings::CallbackReturnTypeIsPromise)0>::Call(int, v8::Local<v8::Value>*) third_party/blink/renderer/bindings/core/v8/callback_invoke_helper.cc:161:10
+    #17 0x651849cd96e1 in blink::V8Function::Invoke(blink::bindings::V8ValueOrScriptWrappableAdapter, blink::BasicHeapVector<(blink::internal::HeapCollectionType)1, blink::ScriptValue, 0u> const&) gen/third_party/blink/renderer/bindings/core/v8/v8_function.cc:73:13
+    #18 0x651849cda3ce in blink::V8Function::InvokeAndReportException(blink::bindings::V8ValueOrScriptWrappableAdapter, blink::BasicHeapVector<(blink::internal::HeapCollectionType)1, blink::ScriptValue, 0u> const&) gen/third_party/blink/renderer/bindings/core/v8/v8_function.cc:133:15
+    #19 0x65184ac33fbb in blink::ScheduledAction::Execute(blink::ExecutionContext*) third_party/blink/renderer/core/scheduler/scheduled_action.cc:149:18
+    #20 0x65184ac2c052 in blink::DOMTimer::Fired() third_party/blink/renderer/core/scheduler/dom_timer.cc:444:11
+    #21 0x651848cfbd7d in blink::TimerBase::RunInternal() third_party/blink/renderer/platform/timer.cc:166:3
+    #22 0x65184488b5b4 in Invoke<void (TimerBase::*)(), blink::TimerBase *> base/functional/bind_internal.h:731:12
+    #23 0x65184488b5b4 in MakeItSo<void (TimerBase::*)(), std::__Cr::tuple<blink::UnretainedWrapper<blink::TimerBase> > > base/functional/bind_internal.h:923:12
+    #24 0x65184488b5b4 in RunImpl<void (TimerBase::*)(), std::__Cr::tuple<blink::UnretainedWrapper<blink::TimerBase> >, 0UL> base/functional/bind_internal.h:1060:14
+    #25 0x65184488b5b4 in base::internal::Invoker<base::internal::FunctorTraits<void (blink::TimerBase::*&&)(), blink::TimerBase*>, base::internal::BindState<true, true, false, void (blink::TimerBase::*)(), blink::UnretainedWrapper<blink::TimerBase>>, void ()>::RunOnce(base::internal::BindStateBase*) base/functional/bind_internal.h:973:12
+    #26 0x651838f36046 in Run base/functional/callback.h:156:12
+    #27 0x651838f36046 in base::TaskAnnotator::RunTaskImpl(base::PendingTask&) base/task/common/task_annotator.cc:207:34
+    #28 0x651838fa8777 in RunTask<(lambda at ../../base/task/sequence_manager/thread_controller_with_message_pump_impl.cc:458:11)> base/task/common/task_annotator.h:104:5
+    #29 0x651838fa8777 in base::sequence_manager::internal::ThreadControllerWithMessagePumpImpl::DoWorkImpl(base::LazyNow*) base/task/sequence_manager/thread_controller_with_message_pump_impl.cc:456:23
+    #30 0x651838fa765c in base::sequence_manager::internal::ThreadControllerWithMessagePumpImpl::DoWork() base/task/sequence_manager/thread_controller_with_message_pump_impl.cc:330:40
+    #31 0x651838fa926a in non-virtual thunk to base::sequence_manager::internal::ThreadControllerWithMessagePumpImpl::DoWork() base/task/sequence_manager/thread_controller_with_message_pump_impl.cc
+    #32 0x651838dfb273 in base::MessagePumpDefault::Run(base::MessagePump::Delegate*) base/message_loop/message_pump_default.cc:42:55
+    #33 0x651838fa9e24 in base::sequence_manager::internal::ThreadControllerWithMessagePumpImpl::Run(bool, base::TimeDelta) base/task/sequence_manager/thread_controller_with_message_pump_impl.cc:629:12
+    #34 0x651838eb4adf in base::RunLoop::Run(base::Location const&) base/run_loop.cc:134:14
+    #35 0x6518447b97ac in content::RendererMain(content::MainFunctionParams) content/renderer/renderer_main.cc:348:16
+    #36 0x6518359249e0 in content::RunZygote(content::ContentMainDelegate*) content/app/content_main_runner_impl.cc:667:14
+    #37 0x6518359259bc in content::RunOtherNamedProcessTypeMain(std::__Cr::basic_string<char, std::__Cr::char_traits<char>, std::__Cr::allocator<char>> const&, content::MainFunctionParams, content::ContentMainDelegate*) content/app/content_main_runner_impl.cc:766:12
+    #38 0x6518359282c3 in content::ContentMainRunnerImpl::Run() content/app/content_main_runner_impl.cc:1123:10
+    #39 0x6518359226fe in content::RunContentProcess(content::ContentMainParams, content::ContentMainRunner*) content/app/content_main.cc:361:36
+    #40 0x651835922c2b in content::ContentMain(content::ContentMainParams) content/app/content_main.cc:374:10
+    #41 0x651823662277 in ChromeMain chrome/app/chrome_main.cc:222:12
+    #42 0x7ce0b6029d8f in __libc_start_call_main csu/../sysdeps/nptl/libc_start_call_main.h:58:16
+
+==427332==Register values:
+rax = 0x000042424242423b  rbx = 0x000077d0025f2e1d  rcx = 0x4343434344454647  rdx = 0x4343434344454647  
+rdi = 0x00007ed3fc175d0b  rsi = 0x00007eaa00200075  rbp = 0x00007fff23e0c038  rsp = 0x00007fff23e0c000  
+ r8 = 0x0000000000000000   r9 = 0x00007fff23e0c200  r10 = 0x00007920b44e1590  r11 = 0x00007b30b443c0f0  
+r12 = 0x0000000000000004  r13 = 0x00007bf0b4431080  r14 = 0x000077d000000000  r15 = 0x000077d0000007bd  
+AddressSanitizer can not provide additional info.
+SUMMARY: AddressSanitizer: SEGV ([anon:v8]+0x8c03) 
+
+==427332==ADDITIONAL INFO
+
+==427332==Note: Please include this section with the ASan report.
+Task trace:
+    #0 0x65184ac2b121 in blink::DOMTimer::DOMTimer(blink::ExecutionContext&, blink::ScheduledAction*, base::TimeDelta, bool) third_party/blink/renderer/core/scheduler/dom_timer.cc:341:27
+    #1 0x65184ac2b121 in blink::DOMTimer::DOMTimer(blink::ExecutionContext&, blink::ScheduledAction*, base::TimeDelta, bool) third_party/blink/renderer/core/scheduler/dom_timer.cc:341:27
+    #2 0x651849537a3f in blink::HTMLDocumentParser::SchedulePumpTokenizer(bool) third_party/blink/renderer/core/html/parser/html_document_parser.cc:890:7
+    #3 0x65183c94d112 in IPC::ChannelAssociatedGroupController::Accept(mojo::Message*) ipc/ipc_mojo_bootstrap.cc:1141:13

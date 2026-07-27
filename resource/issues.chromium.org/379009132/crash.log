@@ -1,0 +1,1469 @@
+abort: CSA_DCHECK failed: Torque assert 'Is<A>(o)' failed [src/builtins/cast.tq:846] [../../src/builtins/base.tq:612]
+
+==== JS stack trace =========================================
+
+    0: ExitFrame [pc: 0x7f544c83a67d]
+    1: StubFrame [pc: 0x7f544c945383]
+    2: join [0x20900048c54d](this=0x20900008545d <JSArray[6]>#0#)
+    3: toString [0x2090004834d9](this=0x20900008545d <JSArray[6]>#0#)
+    4: /* anonymous */ [0x2090004a58c9] [./poc2_withbuilder.js:2435] [bytecode=0x1ea9000c0011 offset=10970](this=0x2090004818e5 <JSGlobalProxy>#1#)
+    5: InternalFrame [pc: 0x7f544c4837dc]
+    6: EntryFrame [pc: 0x7f544c48351f]
+
+==== Details ================================================
+
+[0]: ExitFrame [pc: 0x7f544c83a67d]
+[1]: StubFrame [pc: 0x7f544c945383]
+[2]: join [0x20900048c54d](this=0x20900008545d <JSArray[6]>#0#) {
+// optimized frame
+--------- s o u r c e   c o d e ---------
+<No Source>
+-----------------------------------------
+}
+[3]: toString [0x2090004834d9](this=0x20900008545d <JSArray[6]>#0#) {
+// optimized frame
+--------- s o u r c e   c o d e ---------
+<No Source>
+-----------------------------------------
+}
+[4]: /* anonymous */ [0x2090004a58c9] [./poc2_withbuilder.js:2435] [bytecode=0x1ea9000c0011 offset=10970](this=0x2090004818e5 <JSGlobalProxy>#1#) {
+  // heap-allocated locals
+  var kExprI32x4Add = 173
+  var o21 = 0x20900048efa9 <JSFunction Memory (sfi = 0x209000047e99)>#2#
+  var kExprArrayGet = 10
+  var kExprS128StoreMem = 10
+  var kWasmOpcodes = 0x209000463f0d <Object map = 0x2090004a80cd>#3#
+  var kExprArrayNewData = 8
+  var kExprI32x4Sub = 174
+  var kStringRefSectionCode = 13
+  var kSig_f_v = 0x209000463291 <Object map = 0x2090004a80cd>#4#
+  var kWasmExnRef = -22
+  var kSig_d_f = 0x209000463a15 <Object map = 0x2090004a80cd>#5#
+  var kExprI8x16AddSatU = 111
+  var kExceptionAttribute = 0
+  var kExprS128Load32Splat = 8
+  var kExprS128Load16Lane = 84
+  var kExprStringMeasureUtf8 = 130
+  var kExprI32AtomicCompareExchange16U = 74
+  var kExprI64AtomicSub8U = 38
+  var kExprI64x2ExtMulLowI32x4U = 221
+  var kExprF32x4Sub = 228
+  var kSig_v_r = 0x209000463c09 <Object map = 0x2090004a80cd>#6#
+  var kExprF32x4Ceil = 102
+  var kExprI8x16ShrU = 108
+  var kStringViewWtf16Code = 102
+  var kExprI32x4SConvertI16x8High = 167
+  var kExprF16x8Trunc = 0x209000467025 <JSArray[2]>#7#
+  var kSig_ii_v = 0x20900046361d <Object map = 0x2090004a80cd>#8#
+  var kExprI8x16LtS = 36
+  var kExprStringViewWtf16Slice = 155
+  var kTrapUnreachable = 2
+  var kExprI32x4SConvertI16x8Low = 164
+  var kSig_i_iii = 0x209000462cad <Object map = 0x2090004a80cd>#9#
+  var kDeclFunctionExport = 4
+  var kExprF32x4Splat = 18
+  var kSig_v_iii = 0x2090004633c9 <Object map = 0x2090004a80cd>#10#
+  var kExprS128Store8Lane = 87
+  var kExprStringAsWtf16 = 149
+  var kExprI64x2ShrS = 203
+  var kExprF16x8Floor = 0x209000466fc9 <JSArray[2]>#11#
+  var v80 = 0
+  var kAnyRefCode = 111
+  var kExprStringNewLossyUtf8Array = 179
+  var kExprI64x2UConvertI32x4Low = 200
+  var kExprTableFill = 16
+  var kExprStringAsIter = 156
+  var kExprF16x8Max = 0x2090004674d1 <JSArray[2]>#12#
+  var kExprI8x16Abs = 95
+  var kExprF64x2RelaxedMin = 0x209000466b79 <JSArray[2]>#13#
+  var kExprI64AtomicWait = 1
+  var kExprF32x4NearestInt = 105
+  var kMemoryZero = 0
+  var kCompilationHintTierDefault = 3
+  var v147 = 0
+  var kExprF64x2Eq = 70
+  var kExprAtomicNotify = 17
+  var kDeclFunctionLocals = 2
+  var kExprF32x4DemoteF64x2Zero = 93
+  var kExprI8x16ExtractLaneU = 21
+  var kExprF16x8Splat = 0x209000466d45 <JSArray[2]>#14#
+  var v123 = 0x2090000817d5 <Object map = 0x20900030065d>#15#
+  var kExprStringViewIterAdvance = 161
+  var v110 = 0x209000081541 <JSArray[15]>#16#
+  var kExprStructNewDefault = 0
+  var kExprF64x2Ne = 71
+  var kSig_v_rr = 0x209000463ca1 <Object map = 0x2090004a80cd>#17#
+  var kSig_iii_v = 0x209000463671 <Object map = 0x2090004a80cd>#18#
+  var kExprI32AtomicAdd8U = 30
+  var v197 = 0x2090003067c1 <Instance map = 0x20900048ed6d>#19#
+  var kExprI64x2RelaxedLaneSelect = 0x209000466a65 <JSArray[2]>#20#
+  var kExprI64x2Splat = 17
+  var kExprI32AtomicStore = 19
+  var kExprI16x8ExtAddPairwiseI8x16U = 124
+  var kExprI16x8UConvertI8x16High = 137
+  var kSig_l_v = 0x209000463245 <Object map = 0x2090004a80cd>#21#
+  var kExprI16x8ExtractLaneS = 23
+  var kWasmStructRef = -20
+  var kExprF16x8Le = 0x20900046724d <JSArray[2]>#22#
+  var kTrapRethrowNull = 10
+  var v69 = 0x209000080815 <WasmFunctionBuilder map = 0x20900030102d>#23#
+  var wasmBrOnCast = 0x2090004683c9 <JSFunction WasmModuleBuilder (sfi = 0x2090004a330d)>#24#
+  var kExprI64AtomicAdd32U = 35
+  var kExprI64AtomicStore32U = 28
+  var kExprI64SConvertSatF32 = 3
+  var v167 = 0
+  var kSig_i_f = 0x209000462ec9 <Object map = 0x2090004a80cd>#25#
+  var kExprI8x16AddSatS = 110
+  var kExprI32x4AllTrue = 161
+  var kExprI64AtomicLoad = 75
+  var kExprI16x8SConvertI8x16High = 135
+  var kExprDataDrop = 8
+  var kExprS128Load32x2S = 4
+  var kExprRefCastNull = 22
+  var kExprS128Xor = 80
+  var kExprI32x4Eq = 54
+  var kTableZero = 4
+  var kExprI32AtomicSub16U = 39
+  var kExprI64x2Shl = 202
+  var kExprI32AtomicStore16U = 25
+  var kExprStringNewUtf8 = 76
+  var Binary = 0x20900046797d <JSArray[16]>#26#
+  var kExprI32x4GeS = 62
+  var kExprI64x2ExtMulHighI32x4U = 222
+  var kExprMemoryInit = 7
+  var kExprI32x4BitMask = 163
+  var kTrapNullDereference = 13
+  var kExprF16x8Qfms = 0x2090004678c5 <JSArray[2]>#27#
+  var kSig_v_iiii = 0x209000462d9d <Object map = 0x2090004a80cd>#28#
+  var kExprI8x16RelaxedSwizzle = 255
+  var kExprI64AtomicOr = 50
+  var kExprS128And = 77
+  var kWasmF64 = 125
+  var kNullExnRefCode = 105
+  var kExprStringViewWtf8EncodeLossyUtf8 = 147
+  var kExprI16x8ExtAddPairwiseI8x16S = 123
+  var kExprI64AtomicAdd8U = 31
+  var kSig_i_i = 0
+  var kExprI31GetS = 28
+  var kExprF32x4UConvertI32x4 = 250
+  var kSig_l_ll = 0x2090004630ed <Object map = 0x2090004a80cd>#29#
+  var kSig_v_l = 0x209000463425 <Object map = 0x2090004a80cd>#30#
+  var kExprI16x8GeS = 52
+  var v26 = 0x209000300119 <Memory map = 0x20900048efc9>#31#
+  var kExprS128Load8Splat = 6
+  var kExprI32AtomicOr = 47
+  var kWasmNullExternRef = -13
+  var kTrapArrayOutOfBounds = 12
+  var kExprI16x8GeU = 53
+  var kSig_i_r = 0x209000463ba5 <Object map = 0x2090004a80cd>#32#
+  var kExprF16x8DemoteF32x4Zero = 0x209000467755 <JSArray[2]>#33#
+  var kExprS128Load8x8U = 1
+  var kExprF32x4Add = 227
+  var v77 = 0x209000080ba9 <WasmFunctionBuilder map = 0x20900030102d>#34#
+  var kExprI64x2ShrU = 204
+  var kAnyFuncCode = 112
+  var kWasmI64 = 127
+  var kExprArrayNewDefault = 6
+  var kExprI32UConvertSatF32 = 0
+  var kExprI64AtomicExchange = 64
+  var kLastKnownSectionCode = 14
+  var kExprI32x4Neg = 160
+  var kExprI16x8Neg = 128
+  var kSig_i_iiii = 0x209000462d21 <Object map = 0x2090004a80cd>#35#
+  var kExprS128Store32Lane = 89
+  var kWasmFunctionTypeForm = 101
+  var kExprF32x4Qfma = 0x2090004667e1 <JSArray[2]>#36#
+  var kExprI32x4ExtMulLowI16x8S = 186
+  var kExprTableGrow = 14
+  var kExprF32x4Le = 68
+  var kExprI64x2UConvertI32x4High = 201
+  var kExprF32x4RelaxedMin = 0x209000466ac1 <JSArray[2]>#37#
+  var kExprI32AtomicExchange8U = 65
+  var kExprI64x2Mul = 209
+  var kNullFuncRefCode = 114
+  var kLimitsMemory64SharedNoMaximum = 5
+  var kExprI64AtomicExchange32U = 70
+  var kExprArrayInitData = 17
+  var kSig_v_a = 0x209000463c55 <Object map = 0x2090004a80cd>#38#
+  var kExprStringNewUtf8Array = 170
+  var kExprF64x2ConvertLowI32x4S = 253
+  var kExprI64UConvertSatF64 = 6
+  var kStringViewWtf8Code = 103
+  var kExprI32AtomicXor8U = 58
+  var v67 = 1
+  var kLeb128Mask = -31
+  var kExprS128LoadMem = 78
+  var kExprI16x8ExtractLaneU = 24
+  var kExprI64x2SConvertI32x4Low = 196
+  var o187 = 0x20900008266d <Object map = 0x20900030065d>#39#
+  var kExprMemoryCopy = 9
+  var kExprF64x2Ge = 75
+  var kExprF32x4Div = 230
+  var kExternalFunction = 100
+  var kExprI8x16Splat = 14
+  var kCompilationHintStrategyEager = 1
+  var data_view = 0x209000462a79 <Uint8Array map = 0x209000483705>#40#
+  var kSig_a_i = 0x209000463de1 <Object map = 0x2090004a80cd>#41#
+  var kGlobalSectionCode = 5
+  var kExprF16x8Div = 0x209000467419 <JSArray[2]>#42#
+  var kExprI32x4UConvertF32x4 = 248
+  var kSig_r_r = 0x209000463add <Object map = 0x2090004a80cd>#43#
+  var kExprF32x4Pmin = 233
+  var kSig_f_ff = 0x209000462f99 <Object map = 0x2090004a80cd>#44#
+  var kExprI32x4DotI8x16I7x16AddS = 0x209000466ce9 <JSArray[2]>#45#
+  var kExprI32AtomicLoad = 3
+  var kExprI32AtomicAnd = 40
+  var kCodeSectionCode = 9
+  var kExprF32x4Ge = 69
+  var kExprStringEncodeWtf16Array = 178
+  var kTrapDivByZero = 1
+  var kWasmAnyRef = -17
+  var kExprS128Load16x4S = 2
+  var kExprI16x8LeS = 50
+  var kExprStringNewUtf8ArrayTry = 183
+  var kExprI16x8Sub = 144
+  var kExprRefTest = 19
+  var kExprI8x16Shl = 106
+  var kExprI8x16MinU = 118
+  var kExprF16x8Ceil = 0x209000466f6d <JSArray[2]>#46#
+  var kExprI32x4ExtMulHighI16x8S = 188
+  var kExprI32x4ShrU = 172
+  var kExprI64AtomicAdd = 29
+  var kWasmNullRef = -14
+  var kWasmF16 = 119
+  var kSig_v_aa = 0x209000463cf5 <Object map = 0x2090004a80cd>#47#
+  var kExprTableInit = 11
+  var kWasmS128 = 124
+  var kExprS128Store64Lane = 90
+  var kExprI64AtomicSub32U = 42
+  var kExprF64x2Max = 244
+  var kWasmI31Ref = -19
+  var kWasmExternRef = -16
+  var kExprArraySet = 13
+  var kExprI16x8UConvertF16x8 = 0x209000467641 <JSArray[2]>#48#
+  var kLimitsMemory64WithMaximum = 4
+  var kExprExternConvertAny = 26
+  var kCompilationHintStrategyLazyBaselineEagerTopTier = 2
+  var kTrapDataSegmentOutOfBounds = 8
+  var kExprS128Load32Zero = 91
+  var kWasmFuncRef = -15
+  var kExprI32AtomicAnd8U = 44
+  var kExprF16x8DemoteF64x2Zero = 0x2090004677b1 <JSArray[2]>#49#
+  var kSig_v_v = 0x2090004631c5 <Object map = 0x2090004a80cd>#50#
+  var kExprStringEncodeLossyUtf8Array = 181
+  var kExprI32AtomicCompareExchange = 68
+  var kExternalTable = 0
+  var kExprI8x16BitMask = 99
+  var kExprStringViewWtf8EncodeWtf8 = 148
+  var kExprStringNewWtf8 = 139
+  var wasmBrOnCastFail = 0x209000468c19 <JSFunction (sfi = 0x2090004a582d)>#51#
+  var kTrapUnalignedAccess = 7
+  var kExprI64AtomicCompareExchange8U = 73
+  var kExprI31GetU = 29
+  var kExprI32SConvertSatF64 = 1
+  var o193 = 0x209000082d59 <JSArray[3]>#52#
+  var kExprI64AtomicXor32U = 63
+  var kLimitsSharedWithMaximum = 2
+  var kExprStringViewWtf8Slice = 146
+  var kExprF64x2ConvertLowI32x4U = 254
+  var kPassiveWithElements = 3
+  var kSig_v_i = 0x209000463329 <Object map = 0x2090004a80cd>#53#
+  var kExprI64AtomicAnd32U = 49
+  var kExprI32AtomicExchange16U = 67
+  var kExprI64x2LeS = 217
+  var kSig_v_li = 0x209000463471 <Object map = 0x2090004a80cd>#54#
+  var kExprF64x2Qfma = 0x209000466899 <JSArray[2]>#55#
+  var kExprArrayNewFixed = 7
+  var kExprI16x8UConvertI32x4 = 133
+  var kExprStringNewUtf8Try = 142
+  var v89 = 0x209000081125 <JSArray[2]>#56#
+  var kExprI16x8SubSatU = 146
+  var kStringViewIterCode = 98
+  var kTrapElementSegmentOutOfBounds = 9
+  var kExprI64x2ExtractLane = 28
+  var kTrapMemOutOfBounds = 0
+  var kExprI16x8ExtMulHighI8x16U = 158
+  var kExprStringMeasureWtf8 = 131
+  var kExprF32x4Lt = 66
+  var kExprV128AnyTrue = 82
+  var kTrapIllegalCast = 14
+  var v65 = 2
+  var kExprStringViewIterNext = 160
+  var kExprI32x4GeU = 63
+  var kExprI16x8DotI8x16I7x16S = 0x209000466c8d <JSArray[2]>#57#
+  var kExprI8x16Popcnt = 97
+  var kExprI32x4ReplaceLane = 27
+  var kExprI64AtomicStore8U = 24
+  var kFunctionNamesCode = 0
+  var v27 = 0
+  var kExprF32x4Ne = 65
+  var kExprI32x4ExtractLane = 26
+  var kExprStringNewWtf16Array = 176
+  var kExprStringEncodeWtf8Array = 182
+  var v2 = 0x209000468c35 <JSFunction v2 (sfi = 0x2090004a585d)>#58#
+  var kExprF64x2RelaxedMax = 0x209000466bd5 <JSArray[2]>#59#
+  var kAtomicWaitNotEqual = 0
+  var kWasmStringRef = -12
+  var kExprI16x8BitMask = 131
+  var kExprF64x2Abs = 235
+  var kExprI8x16MinS = 117
+  var kExprI32x4ExtMulLowI16x8U = 189
+  var kExprArrayFill = 15
+  var kLimitsNoMaximum = 0x2090004a54a1 <HeapNumber 4294967295.0>
+  var kExprI64x2ExtMulLowI32x4S = 219
+  var kExprStringCompare = 164
+  var kExprF64x2Pmin = 245
+  var v7 = 0x209000468cad <WasmModuleBuilder map = 0x2090004acc41>#60#
+  var kExprStringViewWtf8Advance = 144
+  var kCatchAllRef = 2
+  var kExprF32x4PromoteLowF16x8 = 0x20900046780d <JSArray[2]>#61#
+  var kFuncRefCode = 127
+  var kSig_v_dd = 0x20900046356d <Object map = 0x2090004a80cd>#62#
+  var kCatchAllNoRef = 1
+  var kExprF32x4Pmax = 234
+  var v12 = 0x209000468ee9 <Object map = 0x2090004accdd>#63#
+  var kExprStringConcat = 135
+  var kExprI64UConvertSatF32 = 4
+  var kExprStringViewIterRewind = 162
+  var kExprI64AtomicAdd16U = 34
+  var kExprI32AtomicOr8U = 51
+  var kCompilationHintTierOptimized = 1
+  var kExprF64x2Sqrt = 237
+  var kExprI16x8SConvertF16x8 = 0x2090004675e5 <JSArray[2]>#64#
+  var kExternalMemory = 1
+  var kWasmArrayTypeForm = 95
+  var kExprAtomicFence = 2
+  var kExprI32x4ExtAddPairwiseI16x8S = 125
+  var kTagSectionCode = 12
+  var kWasmStringViewWtf8 = -25
+  var kExprF64x2Trunc = 121
+  var kExprI16x8Add = 141
+  var kExprI16x8LtU = 47
+  var kExprF16x8Pmin = 0x20900046752d <JSArray[2]>#65#
+  var kExprI16x8ExtMulHighI8x16S = 156
+  var kSig_f_ffff = 0x209000463005 <Object map = 0x2090004a80cd>#66#
+  var kExprI8x16GeU = 43
+  var kExprRefI31 = 27
+  var kExprI64AtomicStore = 22
+  var kExprS128Load32Lane = 85
+  var kSig_ii_ii = 0x2090004637ad <Object map = 0x2090004a80cd>#67#
+  var kWasmNullFuncRef = 118
+  var kSig_iii_i = 0x209000463739 <Object map = 0x2090004a80cd>#68#
+  var kExprI16x8SConvertI32x4 = 132
+  var kExprF32x4Floor = 103
+  var kCatchRef = 0
+  var kExprI8x16MaxS = 119
+  var kExprI16x8RoundingAverageU = 153
+  var kExprI32AtomicLoad8U = 16
+  var kExprF64x2Div = 242
+  var kDeclNoLocals = 0x209000462ad1 <DataView map = 0x2090004870f1>#69#
+  var kWasmSubtypeForm = 94
+  var kExprF16x8Add = 0x209000467305 <JSArray[2]>#70#
+  var v139 = 0x2090000817f5 <Object map = 0x20900030065d>#71#
+  var kExprI64SConvertSatF64 = 5
+  var kExprI16x8RelaxedQ15MulRS = 0x209000466c31 <JSArray[2]>#72#
+  var o11 = 0x20900048efa9 <JSFunction Memory (sfi = 0x209000047e99)>#2#
+  var kDataCountSectionCode = 11
+  var kExprF32x4Neg = 224
+  var kStringRefCode = 113
+  var kExprF32x4Abs = 223
+  var kExprArrayLen = 14
+  var kExprRefCast = 21
+  var kExprI16x8ShrU = 140
+  var kSig_v_f = 0x20900046389d <Object map = 0x2090004a80cd>#73#
+  var kExprF16x8NearestInt = 0x209000467081 <JSArray[2]>#74#
+  var kExprStringEq = 136
+  var kExprI16x8SubSatS = 145
+  var kExprI32AtomicXor = 54
+  var kExprI16x8Eq = 44
+  var kExprF32x4Mul = 229
+  var kExprI8x16ExtractLaneS = 20
+  var kExprArrayNew = 5
+  var kExprI32x4UConvertI16x8High = 169
+  var kExprI64AtomicOr8U = 52
+  var kExprRefTestNull = 20
+  var kExprI32x4DotI16x8S = 185
+  var kExprF16x8Sqrt = 0x209000466f11 <JSArray[2]>#75#
+  var kLimitsMemory64NoMaximum = 3
+  var kWasmF32 = 126
+  var kExprF64x2Lt = 72
+  var kExprI8x16SubSatU = 114
+  var v140 = 0x209000080815 <WasmFunctionBuilder map = 0x20900030102d>#23#
+  var kTrapDivUnrepresentable = 2
+  var kExprStringEncodeWtf8 = 141
+  var kExprI64x2AllTrue = 193
+  var kI31RefCode = 109
+  var kSig_v_d = 0x209000463521 <Object map = 0x2090004a80cd>#76#
+  var kExprI32AtomicAdd16U = 32
+  var kSig_i_dd = 0x209000463159 <Object map = 0x2090004a80cd>#77#
+  var kExprI64x2ExtMulHighI32x4S = 220
+  var kSig_f_d = 0x20900046394d <Object map = 0x2090004a80cd>#78#
+  var kMemorySectionCode = 4
+  var kWasmAnyFunc = -16
+  var kExprF32x4SConvertI32x4 = 249
+  var kModuleNameCode = 14
+  var kExprI32x4LtS = 56
+  var kExprF16x8Min = 0x209000467475 <JSArray[2]>#79#
+  var kExprS128Or = 79
+  var kPassive = 0
+  var kExprI64AtomicAnd16U = 48
+  var kAtomicWaitTimedOut = 1
+  var kWasmI8 = 123
+  var kExprI16x8AddSatU = 143
+  var kExprTableSize = 15
+  var kSig_i_l = 0x209000462bdd <Object map = 0x2090004a80cd>#80#
+  var kWasmI32 = 64
+  var kExprI16x8ExtMulLowI8x16S = 155
+  var kExprStringAsWtf8 = 143
+  var kExprF64x2Le = 74
+  var kExprI32x4ExtAddPairwiseI16x8U = 126
+  var kExprI32AtomicSub8U = 37
+  var kCompilationHintStrategyLazy = 0
+  var kExprI64AtomicAnd8U = 45
+  var kTrapMsgs = 3
+  var v53 = 1
+  var kExprF64x2ExtractLane = 32
+  var kExprArrayGetU = 12
+  var kExprStringViewIterSlice = 163
+  var kExprI8x16RelaxedLaneSelect = 0x209000466951 <JSArray[2]>#81#
+  var kExprI16x8LtS = 46
+  var v194 = 0x209000082d85 <Object map = 0x209000302e71>#82#
+  var kExprRefCastNop = 30
+  var kTrapFuncSigMismatch = 6
+  var WasmStruct = 0x209000468029 <JSFunction WasmTableBuilder (sfi = 0x2090004a315d)>#83#
+  var kExprStringEncodeWtf16 = 134
+  var kExprI32SConvertSatF32 = 184
+  var v200 = 0x209000084ed5 <Object map = 0x209000306a39>#84#
+  var kExprI64AtomicSub = 36
+  var v15 = 0x2090004acd85 <Memory map = 0x20900048efc9>#85#
+  var kExprStringViewWtf16Length = 152
+  var kExprI8x16Add = 109
+  var kExprI32x4SConvertF32x4 = 247
+  var kSig_a_v = 0x209000463d95 <Object map = 0x2090004a80cd>#86#
+  var kExprS128AndNot = 78
+  var kWasmSharedTypeForm = 2
+  var kExprS128Not = 76
+  var kExprF16x8UConvertI16x8 = 0x2090004676f9 <JSArray[2]>#87#
+  var kSig_d_i = 0x209000463a79 <Object map = 0x2090004a80cd>#88#
+  var kArrayRefCode = 107
+  var kExprF64x2Add = 239
+  var kTrapFloatUnrepresentable = 4
+  var kExprArrayNewElem = 9
+  var kExprI64AtomicXor8U = 59
+  var kWasmRefNull = 97
+  var kEqRefCode = 110
+  var kExprI16x8MaxS = 151
+  var kSig_d_v = 0x2090004632dd <Object map = 0x2090004a80cd>#89#
+  var kExprI64x2Add = 205
+  var kExprS128Select = 81
+  var kSig_iii_ii = 0x209000463821 <Object map = 0x2090004a80cd>#90#
+  var kNoSuperType = 78
+  var kExprBrOnCastFail = 24
+  var kExprI16x8RelaxedLaneSelect = 0x2090004669ad <JSArray[2]>#91#
+  var kExprF16x8Ne = 0x209000467139 <JSArray[2]>#92#
+  var kExprStringViewWtf8EncodeUtf8 = 145
+  var kExprStringNewWtf8Array = 180
+  var kExprI16x8ShrS = 139
+  var kExprF64x2Gt = 73
+  var kExprF16x8Ge = 0x2090004672a9 <JSArray[2]>#93#
+  var kExprI32x4Shl = 170
+  var kActiveWithIndex = 1
+  var kExprBrOnCast = 23
+  var kExprF16x8SConvertI16x8 = 0x20900046769d <JSArray[2]>#94#
+  var kExprStringIsUsvSequence = 137
+  var kExprS128Load64Lane = 86
+  var kExprI32AtomicExchange = 61
+  var kExprI32AtomicAnd16U = 46
+  var kExprI32x4ExtMulHighI16x8U = 190
+  var kExprI64AtomicExchange16U = 69
+  var kNullExternRefCode = 108
+  var kSig_i_v = 0x2090004631f9 <Object map = 0x2090004a80cd>#95#
+  var kExprTableCopy = 13
+  var kExprI16x8GtU = 49
+  var kWasmArrayRef = -21
+  var kExternalTag = 3
+  var kExprI32UConvertSatF64 = 2
+  var kExprI32AtomicSub = 33
+  var kExprI32x4GtU = 59
+  var kExprI8x16AllTrue = 98
+  var kExprF64x2Neg = 236
+  var kExprF16x8Mul = 0x2090004673bd <JSArray[2]>#96#
+  var kExprI32x4Ne = 55
+  var kFunctionSectionCode = 2
+  var kExprStringEncodeUtf8Array = 177
+  var kExprF16x8Abs = 0x209000466e59 <JSArray[2]>#97#
+  var kExprI64x2Sub = 206
+  var kExprS128Store16Lane = 88
+  var kExprStringFromCodePoint = 168
+  var kExprI8x16LeU = 41
+  var kStartSectionCode = 7
+  var kWasmRef = 99
+  var o188 = 0x209000082cc1 <Object map = 0x209000302dd1>#98#
+  var kExprS128Load16x4U = 3
+  var kExprI8x16Sub = 112
+  var kSig_l_l = 0x209000462b51 <Object map = 0x2090004a80cd>#99#
+  var kExprElemDrop = 12
+  var kActiveNoIndex = 7
+  var kExprF16x8ExtractLane = 0x209000466da1 <JSArray[2]>#100#
+  var kExprI32x4UConvertI16x8Low = 168
+  var kExprI64AtomicLoad32U = 21
+  var kExprF32x4ExtractLane = 30
+  var v171 = 0x209000081cb5 <JSArray[39]>#101#
+  var kExprF64x2Sub = 240
+  var kExprI32x4RelaxedTruncF64x2UZero = 0x209000466785 <JSArray[2]>#102#
+  var kExprI64AtomicAnd = 43
+  var kExprF64x2Floor = 116
+  var WasmTableBuilder = 0x209000467f4d <JSFunction WasmGlobalBuilder (sfi = 0x2090004a30fd)>#103#
+  var kExprStringConst = 129
+  var v17 = 0x209000300081 <DataView map = 0x2090004870f1>#104#
+  var kExprI16x8Shl = 138
+  var kSig_i_s = 0x209000463ea9 <Object map = 0x2090004a80cd>#105#
+  var kExprI8x16GeS = 42
+  var kSig_a_a = 0x209000463b41 <Object map = 0x2090004a80cd>#106#
+  var v192 = 0x209000082d19 <Object map = 0x209000302df9>#107#
+  var kTrapArrayTooLarge = 11
+  var kExprF32x4Trunc = 104
+  var kCompilationHintStrategyDefault = 0x209000467921 <JSArray[2]>#108#
+  var kExprI64AtomicOr16U = 55
+  var kExprI8x16LtU = 37
+  var kExprI32x4Splat = 16
+  var kSig_f_i = 0x209000462e65 <Object map = 0x2090004a80cd>#109#
+  var kExprS128Load8Lane = 83
+  var kExprF32x4ReplaceLane = 31
+  var kExprI32x4MaxS = 183
+  var kSig_i_ii = 0x209000462c41 <Object map = 0x2090004a80cd>#110#
+  var kExprI64AtomicOr32U = 56
+  var kExprF16x8Neg = 0x209000466eb5 <JSArray[2]>#111#
+  var kExprI8x16SConvertI16x8 = 100
+  var kExprI64x2Eq = 213
+  var kExprI16x8LeU = 51
+  var kLimitsMemory64SharedWithMaximum = 6
+  var kStructRefCode = 115
+  var kExprI32AtomicOr16U = 53
+  var kExprI16x8AddSatS = 142
+  var kExprAnyConvertExtern = 25
+  var kDeclarativeWithElements = 5
+  var kExprI64x2GeS = 218
+  var kExprI64AtomicXor = 57
+  var kExprI16x8MinS = 149
+  var kExprI32AtomicAdd = 26
+  var kExprArrayGetS = 11
+  var kExprF32x4Min = 231
+  var kExprI16x8ReplaceLane = 25
+  var kExprS128Load16Splat = 7
+  var kExprI16x8AllTrue = 130
+  var kExprF16x8ReplaceLane = 0x209000466dfd <JSArray[2]>#112#
+  var kExprI64x2BitMask = 195
+  var kExprI16x8UConvertI8x16Low = 136
+  var kSig_v_ii = 0x209000463375 <Object map = 0x2090004a80cd>#113#
+  var kExprI8x16Swizzle = 13
+  var kExprF32x4Sqrt = 225
+  var kExprArrayCopy = 16
+  var kLocalNamesCode = 1
+  var kWasmStringViewIter = -30
+  var kExprF16x8Pmax = 0x209000467589 <JSArray[2]>#114#
+  var kDeclarative = 2
+  var kLimitsSharedNoMaximum = 1
+  var kExprI32x4GtS = 58
+  var kExternalGlobal = 2
+  var kWasmVoid = 8
+  var kExprStructSet = 4
+  var kExprStructNew = 0x2090004665d5 <Object map = 0x2090004abf01>#115#
+  var kExprStructGetS = 2
+  var kExprI32x4LeU = 61
+  var kWasmI16 = 120
+  var kElementSectionCode = 8
+  var kTrapTableOutOfBounds = 5
+  var kExprI16x8Mul = 148
+  var kExprStringEncodeUtf8 = 133
+  var kExprS128Load8x8S = 0
+  var kExprF64x2Mul = 241
+  var kExprStringNewLossyUtf8 = 138
+  var WasmModuleBuilder = 0x209000468265 <JSFunction WasmElemSegment (sfi = 0x2090004a321d)>#116#
+  var kTypeSectionCode = 0
+  var kExnRefCode = 106
+  var kExprF64x2Ceil = 115
+  var kExprI32AtomicStore8U = 23
+  var kExprI32x4TruncSatF64x2UZero = 252
+  var kExprF32x4RelaxedMax = 0x209000466b1d <JSArray[2]>#117#
+  var kExprS128Const = 11
+  var v143 = 0x209000080815 <WasmFunctionBuilder map = 0x20900030102d>#23#
+  var kSig_d_dd = 0x209000463081 <Object map = 0x2090004a80cd>#118#
+  var kExprI64AtomicXor16U = 62
+  var kExprF32x4Max = 232
+  var kExprI16x8MaxU = 152
+  var kExprI16x8GtS = 48
+  var kExprI32AtomicXor16U = 60
+  var kExprI64AtomicCompareExchange16U = 76
+  var kSig_v_lii = 0x2090004634c5 <Object map = 0x2090004a80cd>#119#
+  var kExprArrayInitElem = 18
+  var kExprI64AtomicSub16U = 41
+  var kExprI32x4MinS = 181
+  var WasmGlobalBuilder = 0x209000467d11 <JSFunction WasmFunctionBuilder (sfi = 0x2090004a2f1d)>#120#
+  var kWasmSubtypeFinalForm = 80
+  var kExprI64x2Ne = 214
+  var kExprS128Load64Splat = 9
+  var kExprI16x8Abs = 127
+  var kExprI8x16LeS = 40
+  var kExportSectionCode = 6
+  var kExprI32AtomicCompareExchange8U = 72
+  var v5 = 0x209000441479 <Object map = 0x2090004948a9>#121#
+  var kExprI8x16ReplaceLane = 22
+  var kExprI16x8ExtMulLowI8x16U = 157
+  var kExprI32x4MaxU = 184
+  var kExprI64x2GtS = 216
+  var kExprF64x2Min = 243
+  var kExprI32x4RelaxedTruncF32x4U = 0x2090004666cd <JSArray[2]>#122#
+  var kExprI8x16UConvertI16x8 = 101
+  var kExprI8x16GtU = 39
+  var kSig_v_ddi = 0x2090004635c1 <Object map = 0x2090004a80cd>#123#
+  var kWasmRecursiveTypeGroupForm = 79
+  var kExprF32x4Eq = 64
+  var kExprI64x2Neg = 192
+  var kExprI32x4RelaxedLaneSelect = 0x209000466a09 <JSArray[2]>#124#
+  var kExprI8x16Ne = 35
+  var v106 = 0
+  var kSig_d_d = 0x2090004639b1 <Object map = 0x2090004a80cd>#125#
+  var kExprF64x2Qfms = 0x2090004668f5 <JSArray[2]>#126#
+  var kExprF32x4Gt = 67
+  var kAtomicWaitOk = 15
+  var kSig_ii_i = 0x2090004636cd <Object map = 0x2090004a80cd>#127#
+  var kExprI32x4ShrS = 171
+  var kLimitsWithMaximum = 0
+  var kExprI8x16Shuffle = 12
+  var kNullRefCode = 116
+  var kExprStringHash = 169
+  var kExprI32x4Mul = 177
+  var kWasmStructTypeForm = 96
+  var kTrapRemByZero = 3
+  var kExprStringEncodeLossyUtf8 = 140
+  var kExprStringViewWtf16GetCodeunit = 153
+  var kExprF64x2NearestInt = 147
+  var kSig_l_i = 0x209000462e01 <Object map = 0x2090004a80cd>#128#
+  var byte_view = 0x20900045df75 <FixedArray[685]>#129#
+  var kUnknownSectionCode = 0
+  var kExprF16x8Lt = 0x209000467195 <JSArray[2]>#130#
+  var kExprI64AtomicExchange8U = 66
+  var kExprI64AtomicLoad8U = 17
+  var kDataSectionCode = 10
+  var kExprF32x4Qfms = 0x20900046683d <JSArray[2]>#131#
+  var kExprI16x8SConvertI8x16Low = 134
+  var kExprI32x4LtU = 57
+  var kExprStringNewWtf16 = 128
+  var kPrefixOpcodes = 0x209000463f21 <Object map = 0x2090004a91d5>#132#
+  var kCompilationHintTierBaseline = 0
+  var kExternRefCode = 112
+  var kWasmEqRef = -18
+  var kExprF64x2Splat = 19
+  var kExprI32AtomicLoad16U = 18
+  var kExprI32x4LeS = 60
+  var kExprI16x8Ne = 45
+  var WasmElemSegment = 0x2090004681b5 <JSFunction WasmArray (sfi = 0x2090004a31ed)>#133#
+  var kExprI8x16ShrS = 107
+  var kSig_r_v = 0x209000463d49 <Object map = 0x2090004a80cd>#134#
+  var kExprStructGet = 1
+  var kExprF16x8Sub = 0x209000467361 <JSArray[2]>#135#
+  var kExprStructGetU = 3
+  var kExprI16x8Splat = 15
+  var kExprI8x16Neg = 96
+  var kExprF64x2Pmax = 246
+  var kExprI16x8MinU = 150
+  var kExprI16x8Q15MulRSatS = 129
+  var kExprI32x4RelaxedTruncF64x2SZero = 0x209000466729 <JSArray[2]>#136#
+  var kExprStringMeasureWtf16 = 132
+  var kSig_f_f = 0x2090004638e9 <Object map = 0x2090004a80cd>#137#
+  var kExprMemoryFill = 10
+  var kImportSectionCode = 1
+  var WasmArray = 0x209000468105 <JSFunction WasmStruct (sfi = 0x2090004a31bd)>#138#
+  var kExprI64x2SConvertI32x4High = 199
+  var WasmFunctionBuilder = 0x2090004679a1 <JSFunction Binary (sfi = 0x2090004a2bed)>#139#
+  var kExprI32x4RelaxedTruncF32x4S = 0x209000466671 <JSArray[2]>#140#
+  var kExprI8x16Eq = 34
+  var kExprI8x16GtS = 38
+  var kDeclFunctionName = 7
+  var kExprI32AtomicWait = 0
+  var kWasmNullExnRef = -23
+  var kExprF64x2ReplaceLane = 33
+  var kExprI64x2LtS = 215
+  var kWasmStringViewWtf16 = -26
+  var kExprF16x8Gt = 0x2090004671f1 <JSArray[2]>#141#
+  var kCatchNoRef = 2
+  var v22 = 0x2090003000b1 <Object map = 0x2090004accdd>#142#
+  var kExprI8x16RoundingAverageU = 122
+  var kExprI32x4TruncSatF64x2SZero = 251
+  var kExprS128Load64Zero = 92
+  var kExprI32x4Abs = 159
+  var kDeclFunctionImport = 1
+  var kSig_i_ff = 0x209000462f2d <Object map = 0x2090004a80cd>#143#
+  var v120 = 0x2090000817b5 <Object map = 0x20900030065d>#144#
+  var kTableSectionCode = 3
+  var kExprF16x8Eq = 0x2090004670dd <JSArray[2]>#145#
+  var kExprI8x16MaxU = 120
+  var kExprI32x4MinU = 182
+  var kExprStringViewWtf16Encode = 154
+  var kExprI64AtomicStore16U = 27
+  var kExprF64x2PromoteLowF32x4 = 94
+  var kExprI64x2Abs = 191
+  var kSig_s_i = 0x209000463e45 <Object map = 0x2090004a80cd>#146#
+  var kExprI64AtomicLoad16U = 20
+  var kExprI64AtomicCompareExchange32U = 77
+  var kSegmentZero = 0
+  var kExprS128Load32x2U = 5
+  var kExprI8x16SubSatS = 113
+  var kExprI64x2ReplaceLane = 29
+  var kExprF16x8Qfma = 0x209000467869 <JSArray[2]>#147#
+  var kExprI64AtomicCompareExchange = 71
+  // expression stack (top to bottom)
+  [54] : 0x20900008545d <JSArray[6]>#0#
+  [53] : 0x209000468865 <JSFunction toModule (sfi = 0x2090004a3aed)>#148#
+  [52] : 0x209000468849 <JSFunction asyncInstantiate (sfi = 0x2090004a3abd)>#149#
+  [51] : 0x20900046882d <JSFunction instantiate (sfi = 0x2090004a3a8d)>#150#
+  [50] : 0x209000468811 <JSFunction toArray (sfi = 0x2090004a3a5d)>#151#
+  [49] : 0x2090004687f5 <JSFunction toBuffer (sfi = 0x2090004a3a2d)>#152#
+  [48] : 0x2090004687d9 <JSFunction setName (sfi = 0x2090004a39fd)>#153#
+  [47] : 0x2090004687bd <JSFunction endRecGroup (sfi = 0x2090004a39cd)>#154#
+  [46] : 0x2090004687a1 <JSFunction startRecGroup (sfi = 0x2090004a399d)>#155#
+  [45] : 0x209000468785 <JSFunction setTableBounds (sfi = 0x2090004a396d)>#156#
+  [44] : 0x209000468769 <JSFunction appendToTable (sfi = 0x2090004a393d)>#157#
+  [43] : 0x20900046874d <JSFunction addDeclarativeElementSegment (sfi = 0x2090004a390d)>#158#
+  [42] : 0x209000468731 <JSFunction addPassiveElementSegment (sfi = 0x2090004a38dd)>#159#
+  [41] : 0x209000468715 <JSFunction addActiveElementSegment (sfi = 0x2090004a38ad)>#160#
+  [40] : 0x2090004686f9 <JSFunction exportMemoryAs (sfi = 0x2090004a387d)>#161#
+  [39] : 0x2090004686dd <JSFunction addPassiveDataSegment (sfi = 0x2090004a384d)>#162#
+  [38] : 0x2090004686c1 <JSFunction addActiveDataSegment (sfi = 0x2090004a381d)>#163#
+  [37] : 0x2090004686a5 <JSFunction setCompilationHint (sfi = 0x2090004a37ed)>#164#
+  [36] : 0x209000468689 <JSFunction addExportOfKind (sfi = 0x2090004a37bd)>#165#
+  [35] : 0x20900046866d <JSFunction addExport (sfi = 0x2090004a378d)>#166#
+  [34] : 0x209000468651 <JSFunction addImportedTag (sfi = 0x2090004a375d)>#167#
+  [33] : 0x209000468635 <JSFunction addImportedTable (sfi = 0x2090004a372d)>#168#
+  [32] : 0x209000468619 <JSFunction addImportedMemory (sfi = 0x2090004a36fd)>#169#
+  [31] : 0x2090004685fd <JSFunction addImportedGlobal (sfi = 0x2090004a36cd)>#170#
+  [30] : 0x2090004685e1 <JSFunction addImport (sfi = 0x2090004a369d)>#171#
+  [29] : 0x2090004685c5 <JSFunction addFunction (sfi = 0x2090004a366d)>#172#
+  [28] : 0x2090004685a9 <JSFunction addTag (sfi = 0x2090004a363d)>#173#
+  [27] : 0x20900046858d <JSFunction addTable64 (sfi = 0x2090004a360d)>#174#
+  [26] : 0x209000468571 <JSFunction addTable (sfi = 0x2090004a35dd)>#175#
+  [25] : 0x209000468555 <JSFunction addGlobal (sfi = 0x2090004a35ad)>#176#
+  [24] : 0x209000468539 <JSFunction defaultFor (sfi = 0x2090004a357d)>#177#
+  [23] : 0x20900046851d <JSFunction nextTypeIndex (sfi = 0x2090004a354d)>#178#
+  [22] : 0x209000468501 <JSFunction addArray (sfi = 0x2090004a351d)>#179#
+  [21] : 0x2090004684e5 <JSFunction addStruct (sfi = 0x2090004a34ed)>#180#
+  [20] : 0x2090004684c9 <JSFunction addLiteralStringRef (sfi = 0x2090004a34bd)>#181#
+  [19] : 0x2090004684ad <JSFunction addType (sfi = 0x2090004a348d)>#182#
+  [18] : 1
+  [17] : 3
+  [16] : 1
+  [15] : 1
+  [14] : 0
+  [13] : 1
+  [12] : 2
+  [11] : 0x20900008266d <Object map = 0x20900030065d>#39#
+  [10] : 1
+  [09] : 0x209000082d19 <Object map = 0x209000302df9>#107#
+  [08] : 0x20900008545d <JSArray[6]>#0#
+  [07] : 0x2090004834d9 <JSFunction toString (sfi = 0x209000256521)>#183#
+  [06] : 0x2090004989b1 <String[11]: #BrOnNonNull>
+  [05] : 0x209000000011 <undefined>
+  [04] : 0x209000498a49 <String[6]: #Atomic>
+  [03] : 0x209000000011 <undefined>
+  [02] : 0x209000000011 <undefined>
+  [01] : 0x209000498a49 <String[6]: #Atomic>
+  [00] : 0x2090004989b1 <String[11]: #BrOnNonNull>
+--------- s o u r c e   c o d e ---------
+// Copyright 2016 the V8 project authors. All rights reserved.\x0a// Use of this source code is governed by a BSD-style license that can be\x0a// found in the LICENSE file.\x0a\x0a// Used for encoding f32 and double constants to bits.\x0alet byte_view = new Uint8Array(8);\x0alet data_view = new DataView(byte_view.buf...
+
+-----------------------------------------
+}
+
+[5]: InternalFrame [pc: 0x7f544c4837dc]
+[6]: EntryFrame [pc: 0x7f544c48351f]
+-- ObjectCacheKey --
+
+ #0# 0x20900008545d: 0x20900008545d <JSArray[6]>
+                 0: 0x209000306959 <Other heap object (WASM_FUNC_REF_TYPE)>#184#
+                 1: 176
+                 2: 1
+                 3: 0x20900008548d <BigInt -752406821444559606>#185#
+                 4: 1
+                 5: 3
+ #1# 0x2090004818e5: 0x2090004818e5 <JSGlobalProxy>
+ #2# 0x20900048efa9: 0x20900048efa9 <JSFunction Memory (sfi = 0x209000047e99)>
+ #3# 0x209000463f0d: 0x209000463f0d <Object map = 0x2090004a80cd>
+            params: 0x209000463ec9 <JSArray[1]>#186#
+           results: 0x209000463ef1 <JSArray[1]>#187#
+ #4# 0x209000463291: 0x209000463291 <Object map = 0x2090004a80cd>
+            params: 0x209000463259 <JSArray[0]>#188#
+           results: 0x209000463275 <JSArray[1]>#189#
+ #5# 0x209000463a15: 0x209000463a15 <Object map = 0x2090004a80cd>
+            params: 0x2090004639d1 <JSArray[1]>#190#
+           results: 0x2090004639f9 <JSArray[1]>#191#
+ #6# 0x209000463c09: 0x209000463c09 <Object map = 0x2090004a80cd>
+            params: 0x209000463bc5 <JSArray[1]>#192#
+           results: 0x209000463bed <JSArray[1]>#193#
+ #7# 0x209000467025: 0x209000467025 <JSArray[2]>
+ #8# 0x20900046361d: 0x20900046361d <Object map = 0x2090004a80cd>
+            params: 0x2090004635e9 <JSArray[3]>#194#
+           results: 0x20900046360d <JSArray[0]>#195#
+ #9# 0x209000462cad: 0x209000462cad <Object map = 0x2090004a80cd>
+            params: 0x209000462c65 <JSArray[2]>#196#
+           results: 0x209000462c91 <JSArray[1]>#197#
+ #10# 0x2090004633c9: 0x2090004633c9 <Object map = 0x2090004a80cd>
+            params: 0x209000463399 <JSArray[2]>#198#
+           results: 0x2090004633b9 <JSArray[0]>#199#
+ #11# 0x209000466fc9: 0x209000466fc9 <JSArray[2]>
+ #12# 0x2090004674d1: 0x2090004674d1 <JSArray[2]>
+ #13# 0x209000466b79: 0x209000466b79 <JSArray[2]>
+ #14# 0x209000466d45: 0x209000466d45 <JSArray[2]>
+ #15# 0x2090000817d5: 0x2090000817d5 <Object map = 0x20900030065d>
+            opcode: 100
+         heap_type: -16
+         is_shared: 0x209000000055 <false>
+ #16# 0x209000081541: 0x209000081541 <JSArray[15]>
+ #17# 0x209000463ca1: 0x209000463ca1 <Object map = 0x2090004a80cd>
+            params: 0x209000463c75 <JSArray[1]>#200#
+           results: 0x209000463c91 <JSArray[0]>#201#
+ #18# 0x209000463671: 0x209000463671 <Object map = 0x2090004a80cd>
+            params: 0x209000463631 <JSArray[0]>#202#
+           results: 0x209000463651 <JSArray[2]>#203#
+ #19# 0x2090003067c1: 0x2090003067c1 <Instance map = 0x20900048ed6d>
+ #20# 0x209000466a65: 0x209000466a65 <JSArray[2]>
+ #21# 0x209000463245: 0x209000463245 <Object map = 0x2090004a80cd>
+            params: 0x20900046320d <JSArray[0]>#204#
+           results: 0x209000463229 <JSArray[1]>#205#
+ #22# 0x20900046724d: 0x20900046724d <JSArray[2]>
+ #23# 0x209000080815: 0x209000080815 <WasmFunctionBuilder map = 0x20900030102d>
+            module: 0x209000468cad <WasmModuleBuilder map = 0x2090004acc41>#60#
+              name: 0x209000000011 <undefined>
+        type_index: 0
+              body: 0x209000081c75 <JSArray[16]>#206#
+            locals: 0x209000080969 <JSArray[10]>#207#
+       local_names: 0x2090000807b1 <JSArray[10]>#208#
+       body_offset: 181
+             index: 0
+ #24# 0x2090004683c9: 0x2090004683c9 <JSFunction WasmModuleBuilder (sfi = 0x2090004a330d)>
+        defaultFor: 0x209000468539 <JSFunction defaultFor (sfi = 0x2090004a357d)>#177#
+ #25# 0x209000462ec9: 0x209000462ec9 <Object map = 0x2090004a80cd>
+            params: 0x209000462e85 <JSArray[1]>#209#
+           results: 0x209000462ead <JSArray[1]>#210#
+ #26# 0x20900046797d: 0x20900046797d <JSArray[16]>
+                 0: 0x20900049c765 <String[11]: #unreachable>
+                 1: 0x20900049c77d <String[27]: #memory access out of bounds>
+                 2: 0x20900049c7a5 <String[14]: #divide by zero>
+                 3: 0x20900049c7c1 <String[29]: #divide result unrepresentable>
+                 4: 0x20900049c7ed <String[17]: #remainder by zero>
+                 5: 0x20900049c80d <String[38]: #float unrepresentable in integer range>
+                 6: 0x20900049c841 <String[28]: #table index is out of bounds>
+                 7: 0x20900049c869 <String[44]: #null function or function signature mismatch>
+                 8: 0x20900049c8a1 <String[45]: #operation does not support unaligned accesses>
+                 9: 0x20900049c8dd <String[26]: #data segment out of bounds>
+                  ...
+ #27# 0x2090004678c5: 0x2090004678c5 <JSArray[2]>
+ #28# 0x209000462d9d: 0x209000462d9d <Object map = 0x2090004a80cd>
+            params: 0x209000462d4d <JSArray[4]>#211#
+           results: 0x209000462d81 <JSArray[1]>#212#
+ #29# 0x2090004630ed: 0x2090004630ed <Object map = 0x2090004a80cd>
+            params: 0x2090004630a5 <JSArray[2]>#213#
+           results: 0x2090004630d1 <JSArray[1]>#214#
+ #30# 0x209000463425: 0x209000463425 <Object map = 0x2090004a80cd>
+            params: 0x2090004633f1 <JSArray[3]>#215#
+           results: 0x209000463415 <JSArray[0]>#216#
+ #31# 0x209000300119: 0x209000300119 <Memory map = 0x20900048efc9>
+ #32# 0x209000463ba5: 0x209000463ba5 <Object map = 0x2090004a80cd>
+            params: 0x209000463b61 <JSArray[1]>#217#
+           results: 0x209000463b89 <JSArray[1]>#218#
+ #33# 0x209000467755: 0x209000467755 <JSArray[2]>
+ #34# 0x209000080ba9: 0x209000080ba9 <WasmFunctionBuilder map = 0x20900030102d>
+            module: 0x209000468cad <WasmModuleBuilder map = 0x2090004acc41>#60#
+              name: 0x209000000011 <undefined>
+        type_index: 1
+              body: 0x209000082b91 <JSArray[40]>#219#
+            locals: 0x209000080c09 <JSArray[3]>#220#
+       local_names: 0x209000080b45 <JSArray[3]>#221#
+       body_offset: 206
+             index: 1
+ #35# 0x209000462d21: 0x209000462d21 <Object map = 0x2090004a80cd>
+            params: 0x209000462cd5 <JSArray[3]>#222#
+           results: 0x209000462d05 <JSArray[1]>#223#
+ #36# 0x2090004667e1: 0x2090004667e1 <JSArray[2]>
+ #37# 0x209000466ac1: 0x209000466ac1 <JSArray[2]>
+ #38# 0x209000463c55: 0x209000463c55 <Object map = 0x2090004a80cd>
+            params: 0x209000463c29 <JSArray[1]>#224#
+           results: 0x209000463c45 <JSArray[0]>#225#
+ #39# 0x20900008266d: 0x20900008266d <Object map = 0x20900030065d>
+            opcode: 100
+         heap_type: 0
+         is_shared: 0x209000000055 <false>
+ #40# 0x209000462a79: 0x209000462a79 <Uint8Array map = 0x209000483705>
+ #41# 0x209000463de1: 0x209000463de1 <Object map = 0x2090004a80cd>
+            params: 0x209000463da9 <JSArray[0]>#226#
+           results: 0x209000463dc5 <JSArray[1]>#227#
+ #42# 0x209000467419: 0x209000467419 <JSArray[2]>
+ #43# 0x209000463add: 0x209000463add <Object map = 0x2090004a80cd>
+            params: 0x209000463a99 <JSArray[1]>#228#
+           results: 0x209000463ac1 <JSArray[1]>#229#
+ #44# 0x209000462f99: 0x209000462f99 <Object map = 0x2090004a80cd>
+            params: 0x209000462f51 <JSArray[2]>#230#
+           results: 0x209000462f7d <JSArray[1]>#231#
+ #45# 0x209000466ce9: 0x209000466ce9 <JSArray[2]>
+ #46# 0x209000466f6d: 0x209000466f6d <JSArray[2]>
+ #47# 0x209000463cf5: 0x209000463cf5 <Object map = 0x2090004a80cd>
+            params: 0x209000463cc5 <JSArray[2]>#232#
+           results: 0x209000463ce5 <JSArray[0]>#233#
+ #48# 0x209000467641: 0x209000467641 <JSArray[2]>
+ #49# 0x2090004677b1: 0x2090004677b1 <JSArray[2]>
+ #50# 0x2090004631c5: 0x2090004631c5 <Object map = 0x2090004a80cd>
+            params: 0x20900046317d <JSArray[2]>#234#
+           results: 0x2090004631a9 <JSArray[1]>#235#
+ #51# 0x209000468c19: 0x209000468c19 <JSFunction (sfi = 0x2090004a582d)>
+ #52# 0x209000082d59: 0x209000082d59 <JSArray[3]>
+ #53# 0x209000463329: 0x209000463329 <Object map = 0x2090004a80cd>
+            params: 0x2090004632f1 <JSArray[0]>#236#
+           results: 0x20900046330d <JSArray[1]>#237#
+ #54# 0x209000463471: 0x209000463471 <Object map = 0x2090004a80cd>
+            params: 0x209000463445 <JSArray[1]>#238#
+           results: 0x209000463461 <JSArray[0]>#239#
+ #55# 0x209000466899: 0x209000466899 <JSArray[2]>
+ #56# 0x209000081125: 0x209000081125 <JSArray[2]>
+ #57# 0x209000466c8d: 0x209000466c8d <JSArray[2]>
+ #58# 0x209000468c35: 0x209000468c35 <JSFunction v2 (sfi = 0x2090004a585d)>
+ #59# 0x209000466bd5: 0x209000466bd5 <JSArray[2]>
+ #60# 0x209000468cad: 0x209000468cad <WasmModuleBuilder map = 0x2090004acc41>
+             types: 0x209000468d21 <JSArray[3]>#240#
+           imports: 0x209000468d31 <JSArray[2]>#241#
+           exports: 0x209000468d41 <JSArray[3]>#242#
+        stringrefs: 0x209000468d51 <JSArray[0]>#243#
+           globals: 0x209000468d61 <JSArray[0]>#244#
+            tables: 0x209000468d71 <JSArray[1]>#245#
+              tags: 0x209000468d81 <JSArray[1]>#246#
+          memories: 0x209000468d91 <JSArray[1]>#247#
+         functions: 0x209000468da1 <JSArray[2]>#248#
+ compilation_hints: 0x209000468db1 <JSArray[0]>#249#
+  element_segments: 0x209000468dc1 <JSArray[1]>#250#
+     data_segments: 0x209000468dd1 <JSArray[0]>#251#
+          explicit: 0x209000468de1 <JSArray[0]>#252#
+        rec_groups: 0x209000468df1 <JSArray[0]>#253#
+num_imported_funcs: 0
+num_imported_globals: 0
+num_imported_tables: 0
+ num_imported_tags: 0
+ #61# 0x20900046780d: 0x20900046780d <JSArray[2]>
+ #62# 0x20900046356d: 0x20900046356d <Object map = 0x2090004a80cd>
+            params: 0x209000463541 <JSArray[1]>#254#
+           results: 0x20900046355d <JSArray[0]>#255#
+ #63# 0x209000468ee9: 0x209000468ee9 <Object map = 0x2090004accdd>
+           initial: 35391
+           maximum: 40722
+            shared: 0x209000000055 <false>
+ #64# 0x2090004675e5: 0x2090004675e5 <JSArray[2]>
+ #65# 0x20900046752d: 0x20900046752d <JSArray[2]>
+ #66# 0x209000463005: 0x209000463005 <Object map = 0x2090004a80cd>
+            params: 0x209000462fbd <JSArray[2]>@0x209000462fbd
+           results: 0x209000462fe9 <JSArray[1]>@0x209000462fe9
+ #67# 0x2090004637ad: 0x2090004637ad <Object map = 0x2090004a80cd>
+            params: 0x209000463759 <JSArray[1]>@0x209000463759
+           results: 0x209000463789 <JSArray[3]>@0x209000463789
+ #68# 0x209000463739: 0x209000463739 <Object map = 0x2090004a80cd>
+            params: 0x2090004636ed <JSArray[1]>@0x2090004636ed
+           results: 0x209000463719 <JSArray[2]>@0x209000463719
+ #69# 0x209000462ad1: 0x209000462ad1 <DataView map = 0x2090004870f1>
+ #70# 0x209000467305: 0x209000467305 <JSArray[2]>
+ #71# 0x2090000817f5: 0x2090000817f5 <Object map = 0x20900030065d>
+            opcode: 100
+         heap_type: 1
+         is_shared: 0x209000000055 <false>
+ #72# 0x209000466c31: 0x209000466c31 <JSArray[2]>
+ #73# 0x20900046389d: 0x20900046389d <Object map = 0x2090004a80cd>
+            params: 0x209000463845 <JSArray[2]>@0x209000463845
+           results: 0x209000463879 <JSArray[3]>@0x209000463879
+ #74# 0x209000467081: 0x209000467081 <JSArray[2]>
+ #75# 0x209000466f11: 0x209000466f11 <JSArray[2]>
+ #76# 0x209000463521: 0x209000463521 <Object map = 0x2090004a80cd>
+            params: 0x2090004634ed <JSArray[3]>@0x2090004634ed
+           results: 0x209000463511 <JSArray[0]>@0x209000463511
+ #77# 0x209000463159: 0x209000463159 <Object map = 0x2090004a80cd>
+            params: 0x209000463111 <JSArray[2]>@0x209000463111
+           results: 0x20900046313d <JSArray[1]>@0x20900046313d
+ #78# 0x20900046394d: 0x20900046394d <Object map = 0x2090004a80cd>
+            params: 0x209000463909 <JSArray[1]>@0x209000463909
+           results: 0x209000463931 <JSArray[1]>@0x209000463931
+ #79# 0x209000467475: 0x209000467475 <JSArray[2]>
+ #80# 0x209000462bdd: 0x209000462bdd <Object map = 0x2090004a80cd>
+            params: 0x209000462b99 <JSArray[1]>@0x209000462b99
+           results: 0x209000462bc1 <JSArray[1]>@0x209000462bc1
+ #81# 0x209000466951: 0x209000466951 <JSArray[2]>
+ #82# 0x209000082d85: 0x209000082d85 <Object map = 0x209000302e71>
+          builtins: 0x209000082d59 <JSArray[3]>#52#
+ #83# 0x209000468029: 0x209000468029 <JSFunction WasmTableBuilder (sfi = 0x2090004a315d)>
+ #84# 0x209000084ed5: 0x209000084ed5 <Object map = 0x209000306a39>
+          exp_mem1: 0x209000300119 <Memory map = 0x20900048efc9>#31#
+         exp_func1: 0x209000306999 <JSFunction js-to-wasm:iiiiiiiiiiii:rifldi (sfi = 0x209000306969)>@0x209000306999
+         undefined: 0x2090003069f5 <JSFunction js-to-wasm:iii:i (sfi = 0x2090003069c5)>@0x2090003069f5
+ #85# 0x2090004acd85: 0x2090004acd85 <Memory map = 0x20900048efc9>
+ #86# 0x209000463d95: 0x209000463d95 <Object map = 0x2090004a80cd>
+            params: 0x209000463d5d <JSArray[0]>@0x209000463d5d
+           results: 0x209000463d79 <JSArray[1]>@0x209000463d79
+ #87# 0x2090004676f9: 0x2090004676f9 <JSArray[2]>
+ #88# 0x209000463a79: 0x209000463a79 <Object map = 0x2090004a80cd>
+            params: 0x209000463a35 <JSArray[1]>@0x209000463a35
+           results: 0x209000463a5d <JSArray[1]>@0x209000463a5d
+ #89# 0x2090004632dd: 0x2090004632dd <Object map = 0x2090004a80cd>
+            params: 0x2090004632a5 <JSArray[0]>@0x2090004632a5
+           results: 0x2090004632c1 <JSArray[1]>@0x2090004632c1
+ #90# 0x209000463821: 0x209000463821 <Object map = 0x2090004a80cd>
+            params: 0x2090004637d1 <JSArray[2]>@0x2090004637d1
+           results: 0x209000463801 <JSArray[2]>@0x209000463801
+ #91# 0x2090004669ad: 0x2090004669ad <JSArray[2]>
+ #92# 0x209000467139: 0x209000467139 <JSArray[2]>
+ #93# 0x2090004672a9: 0x2090004672a9 <JSArray[2]>
+ #94# 0x20900046769d: 0x20900046769d <JSArray[2]>
+ #95# 0x2090004631f9: 0x2090004631f9 <Object map = 0x2090004a80cd>
+            params: 0x2090004631d9 <JSArray[0]>@0x2090004631d9
+           results: 0x2090004631e9 <JSArray[0]>@0x2090004631e9
+ #96# 0x2090004673bd: 0x2090004673bd <JSArray[2]>
+ #97# 0x209000466e59: 0x209000466e59 <JSArray[2]>
+ #98# 0x209000082cc1: 0x209000082cc1 <Object map = 0x209000302dd1>
+          imp_mem1: 0x209000300119 <Memory map = 0x20900048efc9>#31#
+          imp_mem0: 0x2090004acd85 <Memory map = 0x20900048efc9>#85#
+ #99# 0x209000462b51: 0x209000462b51 <Object map = 0x2090004a80cd>
+            params: 0x209000462b0d <JSArray[1]>@0x209000462b0d
+           results: 0x209000462b35 <JSArray[1]>@0x209000462b35
+ #100# 0x209000466da1: 0x209000466da1 <JSArray[2]>
+ #101# 0x209000081cb5: 0x209000081cb5 <JSArray[39]>
+ #102# 0x209000466785: 0x209000466785 <JSArray[2]>
+ #103# 0x209000467f4d: 0x209000467f4d <JSFunction WasmGlobalBuilder (sfi = 0x2090004a30fd)>
+ #104# 0x209000300081: 0x209000300081 <DataView map = 0x2090004870f1>
+ #105# 0x209000463ea9: 0x209000463ea9 <Object map = 0x2090004a80cd>
+            params: 0x209000463e65 <JSArray[1]>@0x209000463e65
+           results: 0x209000463e8d <JSArray[1]>@0x209000463e8d
+ #106# 0x209000463b41: 0x209000463b41 <Object map = 0x2090004a80cd>
+            params: 0x209000463afd <JSArray[1]>@0x209000463afd
+           results: 0x209000463b25 <JSArray[1]>@0x209000463b25
+ #107# 0x209000082d19: 0x209000082d19 <Object map = 0x209000302df9>
+           imp_mem: 0x209000082cc1 <Object map = 0x209000302dd1>#98#
+ #108# 0x209000467921: 0x209000467921 <JSArray[2]>
+ #109# 0x209000462e65: 0x209000462e65 <Object map = 0x2090004a80cd>
+            params: 0x209000462e21 <JSArray[1]>@0x209000462e21
+           results: 0x209000462e49 <JSArray[1]>@0x209000462e49
+ #110# 0x209000462c41: 0x209000462c41 <Object map = 0x2090004a80cd>
+            params: 0x209000462bfd <JSArray[1]>@0x209000462bfd
+           results: 0x209000462c25 <JSArray[1]>@0x209000462c25
+ #111# 0x209000466eb5: 0x209000466eb5 <JSArray[2]>
+ #112# 0x209000466dfd: 0x209000466dfd <JSArray[2]>
+ #113# 0x209000463375: 0x209000463375 <Object map = 0x2090004a80cd>
+            params: 0x209000463349 <JSArray[1]>@0x209000463349
+           results: 0x209000463365 <JSArray[0]>@0x209000463365
+ #114# 0x209000467589: 0x209000467589 <JSArray[2]>
+ #115# 0x2090004665d5: 0x2090004665d5 <Object map = 0x2090004abf01>
+                GC: 251
+           Numeric: 252
+              Simd: 253
+            Atomic: 254
+ #116# 0x209000468265: 0x209000468265 <JSFunction WasmElemSegment (sfi = 0x2090004a321d)>
+ #117# 0x209000466b1d: 0x209000466b1d <JSArray[2]>
+ #118# 0x209000463081: 0x209000463081 <Object map = 0x2090004a80cd>
+            params: 0x209000463031 <JSArray[4]>@0x209000463031
+           results: 0x209000463065 <JSArray[1]>@0x209000463065
+ #119# 0x2090004634c5: 0x2090004634c5 <Object map = 0x2090004a80cd>
+            params: 0x209000463495 <JSArray[2]>@0x209000463495
+           results: 0x2090004634b5 <JSArray[0]>@0x2090004634b5
+ #120# 0x209000467d11: 0x209000467d11 <JSFunction WasmFunctionBuilder (sfi = 0x2090004a2f1d)>
+ #121# 0x209000441479: 0x209000441479 <Object map = 0x2090004948a9>
+              read: 0x209000494799 <JSFunction read (sfi = 0x209000494769)>@0x209000494799
+           execute: 0x209000494839 <JSFunction execute (sfi = 0x209000494809)>@0x209000494839
+ #122# 0x2090004666cd: 0x2090004666cd <JSArray[2]>
+ #123# 0x2090004635c1: 0x2090004635c1 <Object map = 0x2090004a80cd>
+            params: 0x209000463591 <JSArray[2]>@0x209000463591
+           results: 0x2090004635b1 <JSArray[0]>@0x2090004635b1
+ #124# 0x209000466a09: 0x209000466a09 <JSArray[2]>
+ #125# 0x2090004639b1: 0x2090004639b1 <Object map = 0x2090004a80cd>
+            params: 0x20900046396d <JSArray[1]>@0x20900046396d
+           results: 0x209000463995 <JSArray[1]>@0x209000463995
+ #126# 0x2090004668f5: 0x2090004668f5 <JSArray[2]>
+ #127# 0x2090004636cd: 0x2090004636cd <Object map = 0x2090004a80cd>
+            params: 0x209000463685 <JSArray[0]>@0x209000463685
+           results: 0x2090004636a9 <JSArray[3]>@0x2090004636a9
+ #128# 0x209000462e01: 0x209000462e01 <Object map = 0x2090004a80cd>
+            params: 0x209000462dc9 <JSArray[4]>@0x209000462dc9
+           results: 0x209000462df1 <JSArray[0]>@0x209000462df1
+ #129# 0x20900045df75: 0x20900045df75 <FixedArray[685]>
+                 0: 1
+                 1: 1
+                 2: 1
+                 3: 1
+                 4: 1
+                 5: 1
+                 6: 1
+                 7: 1
+                 8: 1
+                 9: 1
+                  ...
+ #130# 0x209000467195: 0x209000467195 <JSArray[2]>
+ #131# 0x20900046683d: 0x20900046683d <JSArray[2]>
+ #132# 0x209000463f21: 0x209000463f21 <Object map = 0x2090004a91d5>
+       Unreachable: 0
+               Nop: 1
+             Block: 2
+              Loop: 3
+                If: 4
+              Else: 5
+               Try: 6
+          TryTable: 31
+          ThrowRef: 10
+             Catch: 7
+             Throw: 8
+           Rethrow: 9
+          CatchAll: 25
+               End: 11
+                Br: 12
+              BrIf: 13
+           BrTable: 14
+            Return: 15
+      CallFunction: 16
+      CallIndirect: 17
+        ReturnCall: 18
+ReturnCallIndirect: 19
+           CallRef: 20
+     ReturnCallRef: 21
+NopForTestingUnsupportedInLiftoff: 22
+          Delegate: 24
+              Drop: 26
+            Select: 27
+    SelectWithType: 28
+          LocalGet: 32
+          LocalSet: 33
+          LocalTee: 34
+         GlobalGet: 35
+         GlobalSet: 36
+          TableGet: 37
+          TableSet: 38
+        I32LoadMem: 40
+        I64LoadMem: 41
+        F32LoadMem: 42
+        F64LoadMem: 43
+      I32LoadMem8S: 44
+      I32LoadMem8U: 45
+     I32LoadMem16S: 46
+     I32LoadMem16U: 47
+      I64LoadMem8S: 48
+      I64LoadMem8U: 49
+     I64LoadMem16S: 50
+     I64LoadMem16U: 51
+     I64LoadMem32S: 52
+     I64LoadMem32U: 53
+       I32StoreMem: 54
+       I64StoreMem: 55
+       F32StoreMem: 56
+       F64StoreMem: 57
+      I32StoreMem8: 58
+     I32StoreMem16: 59
+      I64StoreMem8: 60
+     I64StoreMem16: 61
+     I64StoreMem32: 62
+        MemorySize: 63
+        MemoryGrow: 64
+          I32Const: 65
+          I64Const: 66
+          F32Const: 67
+          F64Const: 68
+            I32Eqz: 69
+             I32Eq: 70
+             I32Ne: 71
+            I32LtS: 72
+            I32LtU: 73
+            I32GtS: 74
+            I32GtU: 75
+            I32LeS: 76
+            I32LeU: 77
+            I32GeS: 78
+            I32GeU: 79
+            I64Eqz: 80
+             I64Eq: 81
+             I64Ne: 82
+            I64LtS: 83
+            I64LtU: 84
+            I64GtS: 85
+            I64GtU: 86
+            I64LeS: 87
+            I64LeU: 88
+            I64GeS: 89
+            I64GeU: 90
+             F32Eq: 91
+             F32Ne: 92
+             F32Lt: 93
+             F32Gt: 94
+             F32Le: 95
+             F32Ge: 96
+             F64Eq: 97
+             F64Ne: 98
+             F64Lt: 99
+             F64Gt: 100
+             F64Le: 101
+             F64Ge: 102
+            I32Clz: 103
+            I32Ctz: 104
+         I32Popcnt: 105
+            I32Add: 106
+            I32Sub: 107
+            I32Mul: 108
+           I32DivS: 109
+           I32DivU: 110
+           I32RemS: 111
+           I32RemU: 112
+            I32And: 113
+            I32Ior: 114
+            I32Xor: 115
+            I32Shl: 116
+           I32ShrS: 117
+           I32ShrU: 118
+            I32Rol: 119
+            I32Ror: 120
+            I64Clz: 121
+            I64Ctz: 122
+         I64Popcnt: 123
+            I64Add: 124
+            I64Sub: 125
+            I64Mul: 126
+           I64DivS: 127
+           I64DivU: 128
+           I64RemS: 129
+           I64RemU: 130
+            I64And: 131
+            I64Ior: 132
+            I64Xor: 133
+            I64Shl: 134
+           I64ShrS: 135
+           I64ShrU: 136
+            I64Rol: 137
+            I64Ror: 138
+            F32Abs: 139
+            F32Neg: 140
+           F32Ceil: 141
+          F32Floor: 142
+          F32Trunc: 143
+     F32NearestInt: 144
+           F32Sqrt: 145
+            F32Add: 146
+            F32Sub: 147
+            F32Mul: 148
+            F32Div: 149
+            F32Min: 150
+            F32Max: 151
+       F32CopySign: 152
+            F64Abs: 153
+            F64Neg: 154
+           F64Ceil: 155
+          F64Floor: 156
+          F64Trunc: 157
+     F64NearestInt: 158
+           F64Sqrt: 159
+            F64Add: 160
+            F64Sub: 161
+            F64Mul: 162
+            F64Div: 163
+            F64Min: 164
+            F64Max: 165
+       F64CopySign: 166
+     I32ConvertI64: 167
+    I32SConvertF32: 168
+    I32UConvertF32: 169
+    I32SConvertF64: 170
+    I32UConvertF64: 171
+    I64SConvertI32: 172
+    I64UConvertI32: 173
+    I64SConvertF32: 174
+    I64UConvertF32: 175
+    I64SConvertF64: 176
+    I64UConvertF64: 177
+    F32SConvertI32: 178
+    F32UConvertI32: 179
+    F32SConvertI64: 180
+    F32UConvertI64: 181
+     F32ConvertF64: 182
+    F64SConvertI32: 183
+    F64UConvertI32: 184
+    F64SConvertI64: 185
+    F64UConvertI64: 186
+     F64ConvertF32: 187
+ I32ReinterpretF32: 188
+ I64ReinterpretF64: 189
+ F32ReinterpretI32: 190
+ F64ReinterpretI64: 191
+      I32SExtendI8: 192
+     I32SExtendI16: 193
+      I64SExtendI8: 194
+     I64SExtendI16: 195
+     I64SExtendI32: 196
+           RefNull: 208
+         RefIsNull: 209
+           RefFunc: 210
+             RefEq: 211
+      RefAsNonNull: 212
+          BrOnNull: 213
+       BrOnNonNull: 214
+ #133# 0x2090004681b5: 0x2090004681b5 <JSFunction WasmArray (sfi = 0x2090004a31ed)>
+ #134# 0x209000463d49: 0x209000463d49 <Object map = 0x2090004a80cd>
+            params: 0x209000463d19 <JSArray[2]>@0x209000463d19
+           results: 0x209000463d39 <JSArray[0]>@0x209000463d39
+ #135# 0x209000467361: 0x209000467361 <JSArray[2]>
+ #136# 0x209000466729: 0x209000466729 <JSArray[2]>
+ #137# 0x2090004638e9: 0x2090004638e9 <Object map = 0x2090004a80cd>
+            params: 0x2090004638bd <JSArray[1]>@0x2090004638bd
+           results: 0x2090004638d9 <JSArray[0]>@0x2090004638d9
+ #138# 0x209000468105: 0x209000468105 <JSFunction WasmStruct (sfi = 0x2090004a31bd)>
+ #139# 0x2090004679a1: 0x2090004679a1 <JSFunction Binary (sfi = 0x2090004a2bed)>
+ #140# 0x209000466671: 0x209000466671 <JSArray[2]>
+ #141# 0x2090004671f1: 0x2090004671f1 <JSArray[2]>
+ #142# 0x2090003000b1: 0x2090003000b1 <Object map = 0x2090004accdd>
+           initial: 57557
+           maximum: 0x209000000011 <undefined>
+            shared: 0x209000000055 <false>
+ #143# 0x209000462f2d: 0x209000462f2d <Object map = 0x2090004a80cd>
+            params: 0x209000462ee9 <JSArray[1]>@0x209000462ee9
+           results: 0x209000462f11 <JSArray[1]>@0x209000462f11
+ #144# 0x2090000817b5: 0x2090000817b5 <Object map = 0x20900030065d>
+            opcode: 100
+         heap_type: 0
+         is_shared: 0x209000000055 <false>
+ #145# 0x2090004670dd: 0x2090004670dd <JSArray[2]>
+ #146# 0x209000463e45: 0x209000463e45 <Object map = 0x2090004a80cd>
+            params: 0x209000463e01 <JSArray[1]>@0x209000463e01
+           results: 0x209000463e29 <JSArray[1]>@0x209000463e29
+ #147# 0x209000467869: 0x209000467869 <JSArray[2]>
+ #148# 0x209000468865: 0x209000468865 <JSFunction toModule (sfi = 0x2090004a3aed)>
+ #149# 0x209000468849: 0x209000468849 <JSFunction asyncInstantiate (sfi = 0x2090004a3abd)>
+ #150# 0x20900046882d: 0x20900046882d <JSFunction instantiate (sfi = 0x2090004a3a8d)>
+ #151# 0x209000468811: 0x209000468811 <JSFunction toArray (sfi = 0x2090004a3a5d)>
+ #152# 0x2090004687f5: 0x2090004687f5 <JSFunction toBuffer (sfi = 0x2090004a3a2d)>
+ #153# 0x2090004687d9: 0x2090004687d9 <JSFunction setName (sfi = 0x2090004a39fd)>
+ #154# 0x2090004687bd: 0x2090004687bd <JSFunction endRecGroup (sfi = 0x2090004a39cd)>
+ #155# 0x2090004687a1: 0x2090004687a1 <JSFunction startRecGroup (sfi = 0x2090004a399d)>
+ #156# 0x209000468785: 0x209000468785 <JSFunction setTableBounds (sfi = 0x2090004a396d)>
+ #157# 0x209000468769: 0x209000468769 <JSFunction appendToTable (sfi = 0x2090004a393d)>
+ #158# 0x20900046874d: 0x20900046874d <JSFunction addDeclarativeElementSegment (sfi = 0x2090004a390d)>
+ #159# 0x209000468731: 0x209000468731 <JSFunction addPassiveElementSegment (sfi = 0x2090004a38dd)>
+ #160# 0x209000468715: 0x209000468715 <JSFunction addActiveElementSegment (sfi = 0x2090004a38ad)>
+ #161# 0x2090004686f9: 0x2090004686f9 <JSFunction exportMemoryAs (sfi = 0x2090004a387d)>
+ #162# 0x2090004686dd: 0x2090004686dd <JSFunction addPassiveDataSegment (sfi = 0x2090004a384d)>
+ #163# 0x2090004686c1: 0x2090004686c1 <JSFunction addActiveDataSegment (sfi = 0x2090004a381d)>
+ #164# 0x2090004686a5: 0x2090004686a5 <JSFunction setCompilationHint (sfi = 0x2090004a37ed)>
+ #165# 0x209000468689: 0x209000468689 <JSFunction addExportOfKind (sfi = 0x2090004a37bd)>
+ #166# 0x20900046866d: 0x20900046866d <JSFunction addExport (sfi = 0x2090004a378d)>
+ #167# 0x209000468651: 0x209000468651 <JSFunction addImportedTag (sfi = 0x2090004a375d)>
+ #168# 0x209000468635: 0x209000468635 <JSFunction addImportedTable (sfi = 0x2090004a372d)>
+ #169# 0x209000468619: 0x209000468619 <JSFunction addImportedMemory (sfi = 0x2090004a36fd)>
+ #170# 0x2090004685fd: 0x2090004685fd <JSFunction addImportedGlobal (sfi = 0x2090004a36cd)>
+ #171# 0x2090004685e1: 0x2090004685e1 <JSFunction addImport (sfi = 0x2090004a369d)>
+ #172# 0x2090004685c5: 0x2090004685c5 <JSFunction addFunction (sfi = 0x2090004a366d)>
+ #173# 0x2090004685a9: 0x2090004685a9 <JSFunction addTag (sfi = 0x2090004a363d)>
+ #174# 0x20900046858d: 0x20900046858d <JSFunction addTable64 (sfi = 0x2090004a360d)>
+ #175# 0x209000468571: 0x209000468571 <JSFunction addTable (sfi = 0x2090004a35dd)>
+ #176# 0x209000468555: 0x209000468555 <JSFunction addGlobal (sfi = 0x2090004a35ad)>
+ #177# 0x209000468539: 0x209000468539 <JSFunction defaultFor (sfi = 0x2090004a357d)>
+ #178# 0x20900046851d: 0x20900046851d <JSFunction nextTypeIndex (sfi = 0x2090004a354d)>
+ #179# 0x209000468501: 0x209000468501 <JSFunction addArray (sfi = 0x2090004a351d)>
+ #180# 0x2090004684e5: 0x2090004684e5 <JSFunction addStruct (sfi = 0x2090004a34ed)>
+ #181# 0x2090004684c9: 0x2090004684c9 <JSFunction addLiteralStringRef (sfi = 0x2090004a34bd)>
+ #182# 0x2090004684ad: 0x2090004684ad <JSFunction addType (sfi = 0x2090004a348d)>
+ #183# 0x2090004834d9: 0x2090004834d9 <JSFunction toString (sfi = 0x209000256521)>
+ #184# 0x209000306959: 0x209000306959 <Other heap object (WASM_FUNC_REF_TYPE)>
+ #185# 0x20900008548d: 0x20900008548d <BigInt -752406821444559606>
+ #186# 0x209000463ec9: 0x209000463ec9 <JSArray[1]>
+ #187# 0x209000463ef1: 0x209000463ef1 <JSArray[1]>
+ #188# 0x209000463259: 0x209000463259 <JSArray[0]>
+ #189# 0x209000463275: 0x209000463275 <JSArray[1]>
+ #190# 0x2090004639d1: 0x2090004639d1 <JSArray[1]>
+ #191# 0x2090004639f9: 0x2090004639f9 <JSArray[1]>
+ #192# 0x209000463bc5: 0x209000463bc5 <JSArray[1]>
+ #193# 0x209000463bed: 0x209000463bed <JSArray[1]>
+ #194# 0x2090004635e9: 0x2090004635e9 <JSArray[3]>
+ #195# 0x20900046360d: 0x20900046360d <JSArray[0]>
+ #196# 0x209000462c65: 0x209000462c65 <JSArray[2]>
+ #197# 0x209000462c91: 0x209000462c91 <JSArray[1]>
+ #198# 0x209000463399: 0x209000463399 <JSArray[2]>
+ #199# 0x2090004633b9: 0x2090004633b9 <JSArray[0]>
+ #200# 0x209000463c75: 0x209000463c75 <JSArray[1]>
+ #201# 0x209000463c91: 0x209000463c91 <JSArray[0]>
+ #202# 0x209000463631: 0x209000463631 <JSArray[0]>
+ #203# 0x209000463651: 0x209000463651 <JSArray[2]>
+ #204# 0x20900046320d: 0x20900046320d <JSArray[0]>
+ #205# 0x209000463229: 0x209000463229 <JSArray[1]>
+ #206# 0x209000081c75: 0x209000081c75 <JSArray[16]>
+ #207# 0x209000080969: 0x209000080969 <JSArray[10]>
+                 0: 0x209000081815 <Object map = 0x209000302119>@0x209000081815
+                 1: 0x2090000818d1 <Object map = 0x209000302119>@0x2090000818d1
+                 2: 0x209000081905 <Object map = 0x209000302119>@0x209000081905
+                 3: 0x209000081939 <Object map = 0x209000302119>@0x209000081939
+                 4: 0x20900008196d <Object map = 0x209000302119>@0x20900008196d
+                 5: 0x2090000819a1 <Object map = 0x209000302119>@0x2090000819a1
+                 6: 0x2090000819d5 <Object map = 0x209000302119>@0x2090000819d5
+                 7: 0x209000081a09 <Object map = 0x209000302119>@0x209000081a09
+                 8: 0x209000081a3d <Object map = 0x209000302119>@0x209000081a3d
+                 9: 0x209000081a71 <Object map = 0x209000302119>@0x209000081a71
+                  ...
+ #208# 0x2090000807b1: 0x2090000807b1 <JSArray[10]>
+ #209# 0x209000462e85: 0x209000462e85 <JSArray[1]>
+ #210# 0x209000462ead: 0x209000462ead <JSArray[1]>
+ #211# 0x209000462d4d: 0x209000462d4d <JSArray[4]>
+ #212# 0x209000462d81: 0x209000462d81 <JSArray[1]>
+ #213# 0x2090004630a5: 0x2090004630a5 <JSArray[2]>
+ #214# 0x2090004630d1: 0x2090004630d1 <JSArray[1]>
+ #215# 0x2090004633f1: 0x2090004633f1 <JSArray[3]>
+ #216# 0x209000463415: 0x209000463415 <JSArray[0]>
+ #217# 0x209000463b61: 0x209000463b61 <JSArray[1]>
+ #218# 0x209000463b89: 0x209000463b89 <JSArray[1]>
+ #219# 0x209000082b91: 0x209000082b91 <JSArray[40]>
+ #220# 0x209000080c09: 0x209000080c09 <JSArray[3]>
+                 0: 0x2090000826a5 <Object map = 0x209000302119>@0x2090000826a5
+                 1: 0x209000082725 <Object map = 0x209000302119>@0x209000082725
+                 2: 0x209000082759 <Object map = 0x209000302119>@0x209000082759
+ #221# 0x209000080b45: 0x209000080b45 <JSArray[3]>
+ #222# 0x209000462cd5: 0x209000462cd5 <JSArray[3]>
+ #223# 0x209000462d05: 0x209000462d05 <JSArray[1]>
+ #224# 0x209000463c29: 0x209000463c29 <JSArray[1]>
+ #225# 0x209000463c45: 0x209000463c45 <JSArray[0]>
+ #226# 0x209000463da9: 0x209000463da9 <JSArray[0]>
+ #227# 0x209000463dc5: 0x209000463dc5 <JSArray[1]>
+ #228# 0x209000463a99: 0x209000463a99 <JSArray[1]>
+ #229# 0x209000463ac1: 0x209000463ac1 <JSArray[1]>
+ #230# 0x209000462f51: 0x209000462f51 <JSArray[2]>
+ #231# 0x209000462f7d: 0x209000462f7d <JSArray[1]>
+ #232# 0x209000463cc5: 0x209000463cc5 <JSArray[2]>
+ #233# 0x209000463ce5: 0x209000463ce5 <JSArray[0]>
+ #234# 0x20900046317d: 0x20900046317d <JSArray[2]>
+ #235# 0x2090004631a9: 0x2090004631a9 <JSArray[1]>
+ #236# 0x2090004632f1: 0x2090004632f1 <JSArray[0]>
+ #237# 0x20900046330d: 0x20900046330d <JSArray[1]>
+ #238# 0x209000463445: 0x209000463445 <JSArray[1]>
+ #239# 0x209000463461: 0x209000463461 <JSArray[0]>
+ #240# 0x209000468d21: 0x209000468d21 <JSArray[3]>
+                 0: 0x2090000800a9 <Object map = 0x2090003003fd>@0x2090000800a9
+                 1: 0x20900008041d <Object map = 0x2090003003fd>@0x20900008041d
+                 2: 0x209000080469 <Object map = 0x2090003003fd>@0x209000080469
+ #241# 0x209000468d31: 0x209000468d31 <JSArray[2]>
+                 0: 0x2090000804d5 <Object map = 0x209000300ab9>@0x2090000804d5
+                 1: 0x209000080781 <Object map = 0x209000300ab9>@0x209000080781
+ #242# 0x209000468d41: 0x209000468d41 <JSArray[3]>
+                 0: 0x209000082bad <Object map = 0x209000302c6d>@0x209000082bad
+                 1: 0x209000082c89 <Object map = 0x209000302c6d>@0x209000082c89
+                 2: 0x209000082ca1 <Object map = 0x209000302c6d>@0x209000082ca1
+ #243# 0x209000468d51: 0x209000468d51 <JSArray[0]>
+ #244# 0x209000468d61: 0x209000468d61 <JSArray[0]>
+ #245# 0x209000468d71: 0x209000468d71 <JSArray[1]>
+                 0: 0x209000080dc5 <WasmTableBuilder map = 0x209000301725>@0x209000080dc5
+ #246# 0x209000468d81: 0x209000468d81 <JSArray[1]>
+ #247# 0x209000468d91: 0x209000468d91 <JSArray[1]>
+                 0: 0x209000080ca5 <Object map = 0x2090003012ed>@0x209000080ca5
+ #248# 0x209000468da1: 0x209000468da1 <JSArray[2]>
+                 0: 0x209000080815 <WasmFunctionBuilder map = 0x20900030102d>#23#
+                 1: 0x209000080ba9 <WasmFunctionBuilder map = 0x20900030102d>#34#
+ #249# 0x209000468db1: 0x209000468db1 <JSArray[0]>
+ #250# 0x209000468dc1: 0x209000468dc1 <JSArray[1]>
+                 0: 0x2090000812a5 <WasmElemSegment map = 0x209000301da5>@0x2090000812a5
+ #251# 0x209000468dd1: 0x209000468dd1 <JSArray[0]>
+ #252# 0x209000468de1: 0x209000468de1 <JSArray[0]>
+ #253# 0x209000468df1: 0x209000468df1 <JSArray[0]>
+ #254# 0x209000463541: 0x209000463541 <JSArray[1]>
+ #255# 0x20900046355d: 0x20900046355d <JSArray[0]>
+=====================
+
+Trace/breakpoint trap (core dumped)

@@ -1,0 +1,19 @@
+Sandbox base: 0x26d000000000
+FTI[send]  callback_data=0x0109e029  callback=0x000cce40
+FTI[getVV] callback_data=0x0109dbe5  callback=0x000cce80
+callback_data swapped
+Triggering chrome.send('x') ...
+
+## V8 sandbox violation detected!
+
+Received signal 11 SEGV_ACCERR 7faac5449af0
+#0 0x55ec64eb8b02 base::debug::CollectStackTrace()
+#1 0x55ec64e9fec1 base::debug::StackTrace::StackTrace()
+#2 0x55ec64eb852f base::debug::(anonymous namespace)::StackDumpSignalHandler()
+#3 0x7faaed2dd420 (/usr/lib/x86_64-linux-gnu/libpthread-2.31.so+0x1441f)
+#4 0x7faac5449af0 <unknown>
+
+Crash: 0x7faac5449af0  Sandbox: [0x26d000000000, 0x27d000000000)
+  -> OUTSIDE sandbox
+
+[+] V8 sandbox violation triggered

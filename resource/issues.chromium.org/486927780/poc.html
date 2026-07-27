@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<body>
+    <script>
+        let iframe = null;
+        iframe = document.createElement('iframe');
+        iframe.style.cssText = 'width:1px;height:1px;opacity:0;position:absolute;';
+        iframe.srcdoc = `<html>
+
+<body>
+  <script>
+    Error.prepareStackTrace = function (err, trace) {
+      try {
+        window.frameElement.remove();
+      } catch (e) { }
+
+      return '';
+    };
+    console.log(new Error('trigger\\n\\r'));
+
+  <\/script>
+</body>
+
+</html>`;
+        document.body.appendChild(iframe);
+
+    </script>
+</body>
+
+</html>

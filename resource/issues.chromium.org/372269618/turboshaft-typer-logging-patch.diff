@@ -1,0 +1,268 @@
+diff --git a/src/compiler/turboshaft/wasm-gc-typed-optimization-reducer.cc b/src/compiler/turboshaft/wasm-gc-typed-optimization-reducer.cc
+index 043d9832ceb..1f894927aa9 100644
+--- a/src/compiler/turboshaft/wasm-gc-typed-optimization-reducer.cc
++++ b/src/compiler/turboshaft/wasm-gc-typed-optimization-reducer.cc
+@@ -6,9 +6,14 @@
+ 
+ #include "src/compiler/turboshaft/analyzer-iterator.h"
+ #include "src/compiler/turboshaft/loop-finder.h"
++#include "src/base/logging.h"
++#include "src/utils/utils.h"
+ 
+ namespace v8::internal::compiler::turboshaft {
+ 
++#define TRACE(...) \
++  if (v8_flags.trace_wasm_typer) PrintF(__VA_ARGS__);
++
+ void WasmGCTypeAnalyzer::Run() {
+   LoopFinder loop_finder(phase_zone_, &graph_);
+   AnalyzerIterator iterator(phase_zone_, graph_, loop_finder);
+@@ -24,6 +29,7 @@ void WasmGCTypeAnalyzer::Run() {
+     if (const GotoOp* last = block.LastOperation(graph_).TryCast<GotoOp>()) {
+       if (IsReachable(block) && last->destination->IsLoop() &&
+           last->destination->LastPredecessor() == &block) {
++        TRACE("[*] ===== WasmGCTypeAnalyzer::Run() -> loop reprocessing! =====\n");
+         const Block& loop_header = *last->destination;
+         // Create a merged snapshot state for the forward- and backedge and
+         // process all operations inside the loop header.
+@@ -49,6 +55,7 @@ void WasmGCTypeAnalyzer::Run() {
+           // stack, so the loop body will be visited in the next iteration.
+           iterator.MarkLoopForRevisitSkipHeader();
+         }
++        TRACE("[*] ===========================================================\n");
+       }
+     }
+   }
+@@ -68,6 +75,9 @@ void WasmGCTypeAnalyzer::StartNewSnapshotFor(const Block& block) {
+   // revisits. Below the reachability is calculated again and potentially
+   // re-added.
+   bool block_was_previously_reachable = IsReachable(block);
++  if (!block_was_previously_reachable) {
++    TRACE("[^] WasmGCTypeAnalyzer::StartNewSnapshotFor() -> !IsReachable(block)\n");
++  }
+   block_is_unreachable_.Remove(block.index().id());
+   // Start new snapshot based on predecessor information.
+   if (block.HasPredecessors() == 0) {
+@@ -81,6 +91,7 @@ void WasmGCTypeAnalyzer::StartNewSnapshotFor(const Block& block) {
+       // If a loop isn't reachable through its forward edge, it can't possibly
+       // become reachable via the backedge.
+       block_is_unreachable_.Add(block.index().id());
++      TRACE("[*] WasmGCTypeAnalyzer::StartNewSnapshotFor() -> block.IsLoop() -> !IsReachable(forward_predecessor)\n");
+     }
+     MaybeSnapshot back_edge_snap =
+         block_to_snapshot_[block.LastPredecessor()->index()];
+@@ -115,6 +126,7 @@ void WasmGCTypeAnalyzer::StartNewSnapshotFor(const Block& block) {
+       }
+     } else {
+       block_is_unreachable_.Add(block.index().id());
++      TRACE("[*] WasmGCTypeAnalyzer::StartNewSnapshotFor() -> block.IsBranchTarget() -> !IsReachable(predecessor)\n");
+     }
+   } else {
+     DCHECK_EQ(block.kind(), Block::Kind::kMerge);
+@@ -187,11 +199,13 @@ void WasmGCTypeAnalyzer::ProcessTypeCast(const WasmTypeCastOp& type_cast) {
+   V<Object> object = type_cast.object();
+   wasm::ValueType target_type = type_cast.config.to;
+   wasm::ValueType known_input_type = RefineTypeKnowledge(object, target_type);
++  TRACE("[*] WasmGCTypeAnalyzer::ProcessTypeCast(): known_input_type = %s, target_type = %s\n", known_input_type.name().c_str(), target_type.name().c_str());
+   input_type_map_[graph_.Index(type_cast)] = known_input_type;
+ }
+ 
+ void WasmGCTypeAnalyzer::ProcessTypeCheck(const WasmTypeCheckOp& type_check) {
+   wasm::ValueType type = GetResolvedType(type_check.object());
++  TRACE("[*] WasmGCTypeAnalyzer::ProcessTypeCheck(): type = %s\n", type.name().c_str());
+   input_type_map_[graph_.Index(type_check)] = type;
+ }
+ 
+@@ -200,6 +214,7 @@ void WasmGCTypeAnalyzer::ProcessAssertNotNull(
+   V<Object> object = assert_not_null.object();
+   wasm::ValueType new_type = assert_not_null.type.AsNonNull();
+   wasm::ValueType known_input_type = RefineTypeKnowledge(object, new_type);
++  TRACE("[*] WasmGCTypeAnalyzer::ProcessAssertNotNull(): known_input_type = %s, target_type = %s\n", known_input_type.name().c_str(), new_type.name().c_str());
+   input_type_map_[graph_.Index(assert_not_null)] = known_input_type;
+ }
+ 
+@@ -275,32 +290,41 @@ void WasmGCTypeAnalyzer::ProcessPhi(const PhiOp& phi) {
+   // If any of the inputs is the default value ValueType(), there isn't any type
+   // knowledge inferrable.
+   DCHECK_GT(phi.input_count, 0);
++  TRACE("[*] WasmGCTypeAnalyzer::ProcessPhi()\n");
+   if (is_first_loop_header_evaluation_) {
+     // We don't know anything about the backedge yet, so we only use the
+     // forward edge. We will revisit the loop header again once the block with
+     // the back edge is evaluated.
++    TRACE("[*] WasmGCTypeAnalyzer::ProcessPhi() -> is_first_loop_header_evaluation_\n");
+     RefineTypeKnowledge(graph_.Index(phi), GetResolvedType((phi.input(0))));
+     return;
+   }
+   wasm::ValueType union_type =
+       types_table_.GetPredecessorValue(ResolveAliases(phi.input(0)), 0);
++  TRACE("[*] WasmGCTypeAnalyzer::ProcessPhi() -> union_type = %s\n", union_type.name().c_str());
+   if (union_type == wasm::ValueType()) return;
+   for (int i = 1; i < phi.input_count; ++i) {
+     wasm::ValueType input_type =
+         types_table_.GetPredecessorValue(ResolveAliases(phi.input(i)), i);
++    TRACE("[*] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, object = %u, input_type = %s\n", ResolveAliases(phi.input(i)).id(), input_type.name().c_str());
+     if (input_type == wasm::ValueType()) return;
+     // <bottom> types have to be skipped as an unreachable predecessor doesn't
+     // change our type knowledge.
+     // TODO(mliedtke): Ideally, we'd skip unreachable predecessors here
+     // completely, as we might loosen the known type due to an unreachable
+     // predecessor.
+-    if (input_type.is_uninhabited()) continue;
++    if (input_type.is_uninhabited()) {
++      TRACE("[*] WasmGCTypeAnalyzer::ProcessPhi() -> input_type.is_uninhabited()\n");
++      continue;
++    }
+     if (union_type.is_uninhabited()) {
+       union_type = input_type;
+     } else {
+       union_type = wasm::Union(union_type, input_type, module_, module_).type;
+     }
++    TRACE("[^] WasmGCTypeAnalyzer::ProcessPhi() -> i = 1, union_type = %s\n", union_type.name().c_str());
+   }
++  TRACE("[^] WasmGCTypeAnalyzer::ProcessPhi() -> final union_type = %s\n", union_type.name().c_str());
+   RefineTypeKnowledge(graph_.Index(phi), union_type);
+ }
+ 
+@@ -327,6 +351,7 @@ void WasmGCTypeAnalyzer::ProcessBranchOnTarget(const BranchOp& branch,
+           // reached.
+           DCHECK_EQ(target.PredecessorCount(), 1);
+           block_is_unreachable_.Add(target.index().id());
++          TRACE("[*] WasmGCTypeAnalyzer::ProcessBranchOnTarget() -> Opcode::kWasmTypeCheck -> wasm::IsSubtypeOf()\n");
+         }
+       }
+     } break;
+@@ -337,6 +362,7 @@ void WasmGCTypeAnalyzer::ProcessBranchOnTarget(const BranchOp& branch,
+           // The target is impossible to be reached.
+           DCHECK_EQ(target.PredecessorCount(), 1);
+           block_is_unreachable_.Add(target.index().id());
++          TRACE("[*] WasmGCTypeAnalyzer::ProcessBranchOnTarget() -> Opcode::kIsNull -> GetResolvedType(is_null.object()).is_non_nullable()\n");
+           return;
+         }
+         RefineTypeKnowledge(is_null.object(),
+@@ -366,11 +392,15 @@ void WasmGCTypeAnalyzer::CreateMergeSnapshot(const Block& block) {
+   for (const Block* predecessor : block.PredecessorsIterable()) {
+     snapshots.push_back(block_to_snapshot_[predecessor->index()].value());
+     bool predecessor_reachable = IsReachable(*predecessor);
++    if (!predecessor_reachable) {
++      TRACE("[^] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> !IsReachable(*predecessor)\n");
++    }
+     reachable.push_back(predecessor_reachable);
+     all_predecessors_unreachable &= !predecessor_reachable;
+   }
+   if (all_predecessors_unreachable) {
+     block_is_unreachable_.Add(block.index().id());
++    TRACE("[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> all_predecessors_unreachable\n");
+   }
+   // The predecessor snapshots need to be reversed to restore the "original"
+   // order of predecessors. (This is used to map phi inputs to their
+@@ -383,6 +413,7 @@ void WasmGCTypeAnalyzer::CreateMergeSnapshot(const Block& block) {
+ bool WasmGCTypeAnalyzer::CreateMergeSnapshot(
+     base::Vector<const Snapshot> predecessors,
+     base::Vector<const bool> reachable) {
++  TRACE("[*] WasmGCTypeAnalyzer::CreateMergeSnapshot()\n");
+   DCHECK_EQ(predecessors.size(), reachable.size());
+   // The merging logic is also used to evaluate if two snapshots are
+   // "identical", i.e. the known types for all operations are the same.
+@@ -408,16 +439,25 @@ bool WasmGCTypeAnalyzer::CreateMergeSnapshot(
+           }
+         }
+ 
++        TRACE("[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot() -> reachable.size() = %zu, i = %zu, first = %s\n", reachable.size(), i, first.name().c_str());
++
+         wasm::ValueType res = first;
+         for (; i < reachable.size(); ++i) {
+-          if (!reachable[i]) continue;  // Skip unreachable predecessors.
++          if (!reachable[i]) {
++            TRACE("[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot() -> !reachable[%zu]\n", i);
++            continue;  // Skip unreachable predecessors.
++          }
+           wasm::ValueType type = predecessors[i];
++          TRACE("[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> predecessors[%zu] = %s\n", i, type.name().c_str());
+           // Uninhabitated types can only occur in unreachable code e.g. as a
+           // result of an always failing cast. Still reachability tracking might
+           // in some cases miss that a block becomes unreachable, so we still
+           // check for uninhabited in the if below.
+           DCHECK(!type.is_uninhabited());
+-          if (type.is_uninhabited()) continue;
++          if (type.is_uninhabited()) {
++            TRACE("[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> type.is_uninhabited()\n");
++            continue;
++          }
+           types_are_equivalent &= first == type;
+           if (res == wasm::ValueType() || type == wasm::ValueType()) {
+             res = wasm::ValueType();
+@@ -425,6 +465,7 @@ bool WasmGCTypeAnalyzer::CreateMergeSnapshot(
+             res = wasm::Union(res, type, module_, module_).type;
+           }
+         }
++        TRACE("[*] WasmGCTypeAnalyzer::CreateMergeSnapshot() -> StartNewSnapshot(): final type res = %s\n", res.name().c_str());
+         return res;
+       });
+   return !types_are_equivalent;
+@@ -441,6 +482,7 @@ wasm::ValueType WasmGCTypeAnalyzer::RefineTypeKnowledge(
+           : wasm::Intersection(previous_value, new_type, module_, module_).type;
+   if (intersection_type.is_uninhabited()) {
+     block_is_unreachable_.Add(current_block_->index().id());
++    TRACE("[*] WasmGCTypeAnalyzer::RefineTypeKnowledge() -> intersection_type.is_uninhabited(), object = %u, intersection_type = %s\n", object.id(), intersection_type.name().c_str());
+   }
+   types_table_.Set(object, intersection_type);
+   return previous_value;
+@@ -452,6 +494,7 @@ wasm::ValueType WasmGCTypeAnalyzer::RefineTypeKnowledgeNotNull(OpIndex object) {
+   wasm::ValueType not_null_type = previous_value.AsNonNull();
+   if (not_null_type.is_uninhabited()) {
+     block_is_unreachable_.Add(current_block_->index().id());
++    TRACE("[*] WasmGCTypeAnalyzer::RefineTypeKnowledgeNotNull() -> not_null_type.is_uninhabited()\n");
+   }
+   types_table_.Set(object, not_null_type);
+   return previous_value;
+@@ -477,11 +520,17 @@ OpIndex WasmGCTypeAnalyzer::ResolveAliases(OpIndex object) const {
+ }
+ 
+ bool WasmGCTypeAnalyzer::IsReachable(const Block& block) const {
+-  return !block_is_unreachable_.Contains(block.index().id());
++  bool res = !block_is_unreachable_.Contains(block.index().id());
++  if (!res) {
++    TRACE("[*] WasmGCTypeAnalyzer::IsReachable() false\n");
++  }
++  return res;
+ }
+ 
+ wasm::ValueType WasmGCTypeAnalyzer::GetResolvedType(OpIndex object) const {
+   return types_table_.Get(ResolveAliases(object));
+ }
+ 
++#undef TRACE
++
+ }  // namespace v8::internal::compiler::turboshaft
+diff --git a/src/compiler/turboshaft/wasm-gc-typed-optimization-reducer.h b/src/compiler/turboshaft/wasm-gc-typed-optimization-reducer.h
+index 56823cf9916..0dc268615b6 100644
+--- a/src/compiler/turboshaft/wasm-gc-typed-optimization-reducer.h
++++ b/src/compiler/turboshaft/wasm-gc-typed-optimization-reducer.h
+@@ -18,6 +18,9 @@
+ 
+ namespace v8::internal::compiler::turboshaft {
+ 
++#define TRACE(...) \
++  if (v8_flags.trace_wasm_typer) PrintF(__VA_ARGS__);
++
+ // The WasmGCTypedOptimizationReducer infers type information based on the input
+ // graph and reduces type checks and casts based on that information.
+ //
+@@ -139,6 +142,7 @@ class WasmGCTypedOptimizationReducer : public Next {
+     if (ShouldSkipOptimizationStep()) goto no_change;
+ 
+     wasm::ValueType type = analyzer_.GetInputType(op_idx);
++    TRACE("[!] REDUCE_INPUT_GRAPH(WasmTypeCast): %s -> %s\n", type.name().c_str(), cast_op.config.to.name().c_str());
+     if (type != wasm::ValueType() && !type.is_uninhabited()) {
+       DCHECK(wasm::IsSameTypeHierarchy(type.heap_type(),
+                                        cast_op.config.to.heap_type(), module_));
+@@ -350,6 +354,8 @@ class WasmGCTypedOptimizationReducer : public Next {
+ 
+ #include "src/compiler/turboshaft/undef-assembler-macros.inc"
+ 
++#undef TRACE
++
+ }  // namespace v8::internal::compiler::turboshaft
+ 
+ #endif  // V8_COMPILER_TURBOSHAFT_WASM_GC_TYPED_OPTIMIZATION_REDUCER_H_
