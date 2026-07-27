@@ -171,11 +171,25 @@ ReduceResult MaglevReducer<BaseT>::AddNewNodeOrGetEquivalent(
       hash, inputs, std::forward<Args>(args)...);
   if (node) return node;
 
+  if constexpr (Node::opcode_of<NodeT> == Opcode::kLoadFixedArrayElement) {
+    if (LoadFixedArrayElement* cached =
+            known_node_aspects().TryFindTaggedKeyedProperty(inputs[0],
+                                                            inputs[1])) {
+      if (cached->options() ==
+          std::forward_as_tuple(std::forward<Args>(args)...)) {
+        return cached;
+      }
+    }
+  }
+
   node =
       NodeBase::New<NodeT>(zone(), inputs.size(), std::forward<Args>(args)...);
   SetNodeInputsNoConversion(node, inputs);
   DCHECK_EQ(node->options(), std::tuple{std::forward<Args>(args)...});
   known_node_aspects().AddExpression(hash, node);
+  if constexpr (Node::opcode_of<NodeT> == Opcode::kLoadFixedArrayElement) {
+    known_node_aspects().RecordTaggedKeyedProperty(inputs[0], inputs[1], node);
+  }
   return AttachExtraInfoAndAddToGraph(node);
 }
 
@@ -2424,8 +2438,11 @@ MaybeReduceResult MaglevReducer<BaseT>::TryFoldCheckMaps(
     return EmitUnconditionalDeopt(DeoptimizeReason::kWrongMap);
   }
 
-  // If the known maps are the subset of the maps to check, we are done.
-  if (merger.known_maps_are_subset_of_requested_maps()) {
+  // If the known maps are the subset of the maps to check and the check cannot
+  // fail on a Smi, we are done.
+  if (merger.known_maps_are_subset_of_requested_maps() &&
+      (NodeTypeIs(GetType(object), NodeType::kAnyHeapObject) ||
+       merger.RequestedMapsAdmitSmis())) {
     // The node type of known_info can get out of sync with the possible maps.
     // For instance after merging with an effectively dead branch (i.e., check
     // contradicting all possible maps).

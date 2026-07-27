@@ -459,8 +459,9 @@ std::optional<Range> MaglevGraphOptimizer::GetRange(ValueNode* node) {
   return refined.is_empty() ? range : refined;
 }
 
-void MaglevGraphOptimizer::RecordBoundsCheckRefinement(ValueNode* index,
-                                                       ValueNode* length) {
+void MaglevGraphOptimizer::RecordBoundsCheckRefinement(
+    AssertCondition condition, ValueNode* index, ValueNode* length) {
+  if (condition != AssertCondition::kUnsignedLessThan) return;
   if (!ranges_) return;
   if (IsConstantNode(index->opcode())) return;
   Range length_range = ranges_->Get(reducer_.current_block(), length);
@@ -880,7 +881,7 @@ ProcessResult MaglevGraphOptimizer::VisitCheckInt32Condition(
     }
   }
 
-  RecordBoundsCheckRefinement(lhs, rhs);
+  RecordBoundsCheckRefinement(node->condition(), lhs, rhs);
   return ProcessResult::kContinue;
 }
 
@@ -1943,6 +1944,13 @@ ProcessResult MaglevGraphOptimizer::VisitLoadFixedArrayElement(
     REPLACE_AND_RETURN_IF_DONE(
         reducer_.TryBuildLoadFixedArrayElementConstantIndex(
             node->ElementsInput().node(), cst.value(), node->load_type()));
+  }
+  if (LoadFixedArrayElement* cached =
+          known_node_aspects().TryFindTaggedKeyedProperty(
+              node->ElementsInput().node(), node->IndexInput().node())) {
+    if (cached != node && cached->load_type() == node->load_type()) {
+      return ReplaceWith(cached);
+    }
   }
   return ProcessResult::kContinue;
 }
