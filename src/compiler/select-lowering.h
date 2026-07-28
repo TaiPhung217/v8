@@ -5,33 +5,40 @@
 #ifndef V8_COMPILER_SELECT_LOWERING_H_
 #define V8_COMPILER_SELECT_LOWERING_H_
 
+#include <map>
+
 #include "src/compiler/graph-reducer.h"
+#include "src/zone-allocator.h"
 
 namespace v8 {
 namespace internal {
 namespace compiler {
 
 // Forward declarations.
-class JSGraphAssembler;
+class CommonOperatorBuilder;
+class Graph;
+
 
 // Lowers Select nodes to diamonds.
-class SelectLowering final : public Reducer {
+class SelectLowering FINAL : public Reducer {
  public:
-  SelectLowering(JSGraphAssembler* graph_assembler, TFGraph* graph);
-  ~SelectLowering() override;
+  SelectLowering(Graph* graph, CommonOperatorBuilder* common);
+  ~SelectLowering();
 
-  const char* reducer_name() const override { return "SelectLowering"; }
-
-  Reduction Reduce(Node* node) override;
+  Reduction Reduce(Node* node) OVERRIDE;
 
  private:
-  Reduction LowerSelect(Node* node);
+  typedef std::multimap<Node*, Node*, std::less<Node*>,
+                        zone_allocator<std::pair<Node* const, Node*>>> Merges;
 
-  JSGraphAssembler* gasm() const { return graph_assembler_; }
-  Node* start() const { return start_; }
+  bool ReachableFrom(Node* const sink, Node* const source);
 
-  JSGraphAssembler* graph_assembler_;
-  Node* start_;
+  CommonOperatorBuilder* common() const { return common_; }
+  Graph* graph() const { return graph_; }
+
+  CommonOperatorBuilder* common_;
+  Graph* graph_;
+  Merges merges_;
 };
 
 }  // namespace compiler

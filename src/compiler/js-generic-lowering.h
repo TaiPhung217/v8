@@ -5,7 +5,11 @@
 #ifndef V8_COMPILER_JS_GENERIC_LOWERING_H_
 #define V8_COMPILER_JS_GENERIC_LOWERING_H_
 
+#include "src/allocation.h"
+#include "src/code-factory.h"
+#include "src/compiler/graph.h"
 #include "src/compiler/graph-reducer.h"
+#include "src/compiler/js-graph.h"
 #include "src/compiler/linkage.h"
 #include "src/compiler/opcodes.h"
 
@@ -15,54 +19,50 @@ namespace compiler {
 
 // Forward declarations.
 class CommonOperatorBuilder;
-class JSGraph;
 class MachineOperatorBuilder;
 class Linkage;
 
 
 // Lowers JS-level operators to runtime and IC calls in the "generic" case.
-class JSGenericLowering final : public AdvancedReducer {
+class JSGenericLowering FINAL : public Reducer {
  public:
-  JSGenericLowering(JSGraph* jsgraph, Editor* editor, JSHeapBroker* broker);
-  ~JSGenericLowering() final;
+  JSGenericLowering(CompilationInfo* info, JSGraph* graph);
+  ~JSGenericLowering() FINAL {}
 
-  const char* reducer_name() const override { return "JSGenericLowering"; }
-
-  Reduction Reduce(Node* node) final;
+  Reduction Reduce(Node* node) FINAL;
 
  protected:
-#define DECLARE_LOWER(x, ...) void Lower##x(Node* node);
+#define DECLARE_LOWER(x) void Lower##x(Node* node);
   // Dispatched depending on opcode.
   JS_OP_LIST(DECLARE_LOWER)
 #undef DECLARE_LOWER
 
+  // Helpers to patch existing nodes in the graph.
+  void PatchOperator(Node* node, const Operator* new_op);
+  void PatchInsertInput(Node* node, int index, Node* input);
+
   // Helpers to replace existing nodes with a generic call.
-  void ReplaceWithBuiltinCall(Node* node, Builtin builtin);
-  void ReplaceWithBuiltinCall(Node* node, Callable c,
-                              CallDescriptor::Flags flags);
-  void ReplaceWithBuiltinCall(Node* node, Callable c,
-                              CallDescriptor::Flags flags,
-                              Operator::Properties properties);
+  void ReplaceWithCompareIC(Node* node, Token::Value token);
+  void ReplaceWithStubCall(Node* node, Callable c, CallDescriptor::Flags flags);
+  void ReplaceWithBuiltinCall(Node* node, Builtins::JavaScript id, int args);
   void ReplaceWithRuntimeCall(Node* node, Runtime::FunctionId f, int args = -1);
 
-  void ReplaceUnaryOpWithBuiltinCall(Node* node,
-                                     Builtin builtin_without_feedback,
-                                     Builtin builtin_with_feedback);
-  void ReplaceBinaryOpWithBuiltinCall(Node* node,
-                                      Builtin builtin_without_feedback,
-                                      Builtin builtin_with_feedback);
+  // Helper for optimization of JSCallFunction.
+  bool TryLowerDirectJSCall(Node* node);
 
-  Zone* zone() const;
-  Isolate* isolate() const;
+  Zone* zone() const { return graph()->zone(); }
+  Isolate* isolate() const { return zone()->isolate(); }
   JSGraph* jsgraph() const { return jsgraph_; }
-  TFGraph* graph() const;
-  CommonOperatorBuilder* common() const;
-  MachineOperatorBuilder* machine() const;
-  JSHeapBroker* broker() const { return broker_; }
+  Graph* graph() const { return jsgraph()->graph(); }
+  Linkage* linkage() const { return linkage_; }
+  CompilationInfo* info() const { return info_; }
+  CommonOperatorBuilder* common() const { return jsgraph()->common(); }
+  MachineOperatorBuilder* machine() const { return jsgraph()->machine(); }
 
  private:
-  JSGraph* const jsgraph_;
-  JSHeapBroker* const broker_;
+  CompilationInfo* info_;
+  JSGraph* jsgraph_;
+  Linkage* linkage_;
 };
 
 }  // namespace compiler

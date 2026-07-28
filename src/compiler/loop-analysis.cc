@@ -1,45 +1,75 @@
-// Copyright 2014 the V8 project authors. All rights reserved.
+// Copyright 2013 the V8 project authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include "src/compiler/graph.h"
 #include "src/compiler/loop-analysis.h"
-
-#include "src/codegen/tick-counter.h"
-#include "src/compiler/all-nodes.h"
-#include "src/compiler/common-operator.h"
-#include "src/compiler/node-marker.h"
-#include "src/compiler/node-properties.h"
 #include "src/compiler/node.h"
-#include "src/compiler/turbofan-graph.h"
-#include "src/zone/zone.h"
+#include "src/compiler/node-properties-inl.h"
+#include "src/zone.h"
 
 namespace v8 {
 namespace internal {
-
-class TickCounter;
-
 namespace compiler {
 
-#define OFFSET(x) ((x)&0x1F)
-#define BIT(x) (1u << OFFSET(x))
-#define INDEX(x) ((x) >> 5)
+typedef uint32_t LoopMarks;
+
+
+// TODO(titzer): don't assume entry edges have a particular index.
+// TODO(titzer): use a BitMatrix to generalize this algorithm.
+static const size_t kMaxLoops = 31;
+static const int kAssumedLoopEntryIndex = 0;  // assume loops are entered here.
+static const LoopMarks kVisited = 1;          // loop #0 is reserved.
+
 
 // Temporary information for each node during marking.
 struct NodeInfo {
   Node* node;
-  NodeInfo* next;  // link in chaining loop members
-  bool backwards_visited;
+  NodeInfo* next;       // link in chaining loop members
+  LoopMarks forward;    // accumulated marks in the forward direction
+  LoopMarks backward;   // accumulated marks in the backward direction
+  LoopMarks loop_mark;  // loop mark for header nodes; encodes loop_num
+
+  bool MarkBackward(LoopMarks bw) {
+    LoopMarks prev = backward;
+    LoopMarks next = backward | bw;
+    backward = next;
+    return prev != next;
+  }
+
+  bool MarkForward(LoopMarks fw) {
+    LoopMarks prev = forward;
+    LoopMarks next = forward | fw;
+    forward = next;
+    return prev != next;
+  }
+
+  bool IsInLoop(size_t loop_num) {
+    DCHECK(loop_num > 0 && loop_num <= 31);
+    return forward & backward & (1 << loop_num);
+  }
+
+  bool IsLoopHeader() { return loop_mark != 0; }
+  bool IsInAnyLoop() { return (forward & backward) > kVisited; }
+
+  bool IsInHeaderForLoop(size_t loop_num) {
+    DCHECK(loop_num > 0);
+    return loop_mark == (kVisited | (1 << loop_num));
+  }
 };
 
 
 // Temporary loop info needed during traversal and building the loop tree.
-struct TempLoopInfo {
+struct LoopInfo {
   Node* header;
   NodeInfo* header_list;
-  NodeInfo* exit_list;
   NodeInfo* body_list;
   LoopTree::Loop* loop;
 };
+
+
+static const NodeInfo kEmptyNodeInfo = {nullptr, nullptr, 0, 0, 0};
+
 
 // Encapsulation of the loop finding algorithm.
 // -----------------------------------------------------------------------------
@@ -55,25 +85,16 @@ struct TempLoopInfo {
 // 1 bit per loop per node per direction are required during the marking phase.
 // To handle nested loops correctly, the algorithm must filter some reachability
 // marks on edges into/out-of the loop header nodes.
-// Note: this algorithm assumes there are no unreachable loop header nodes
-// (including loop phis).
 class LoopFinderImpl {
  public:
-  LoopFinderImpl(TFGraph* graph, LoopTree* loop_tree, TickCounter* tick_counter,
-                 Zone* zone)
-      : zone_(zone),
-        end_(graph->end()),
+  LoopFinderImpl(Graph* graph, LoopTree* loop_tree, Zone* zone)
+      : end_(graph->end()),
         queue_(zone),
         queued_(graph, 2),
-        info_(graph->NodeCount(), {nullptr, nullptr, false}, zone),
+        info_(graph->NodeCount(), kEmptyNodeInfo, zone),
         loops_(zone),
-        loop_num_(graph->NodeCount(), -1, zone),
         loop_tree_(loop_tree),
-        loops_found_(0),
-        width_(0),
-        backward_(nullptr),
-        forward_(nullptr),
-        tick_counter_(tick_counter) {}
+        loops_found_(0) {}
 
   void Run() {
     PropagateBackward();
@@ -85,16 +106,13 @@ class LoopFinderImpl {
     // Print out the results.
     for (NodeInfo& ni : info_) {
       if (ni.node == nullptr) continue;
-      for (int i = 1; i <= loops_found_; i++) {
-        int index = ni.node->id() * width_ + INDEX(i);
-        bool marked_forward = forward_[index] & BIT(i);
-        bool marked_backward = backward_[index] & BIT(i);
-        if (marked_forward && marked_backward) {
+      for (size_t i = 1; i <= loops_.size(); i++) {
+        if (ni.IsInLoop(i)) {
           PrintF("X");
-        } else if (marked_forward) {
-          PrintF(">");
-        } else if (marked_backward) {
-          PrintF("<");
+        } else if (ni.forward & (1 << i)) {
+          PrintF("/");
+        } else if (ni.backward & (1 << i)) {
+          PrintF("\\");
         } else {
           PrintF(" ");
         }
@@ -103,7 +121,7 @@ class LoopFinderImpl {
     }
 
     int i = 0;
-    for (TempLoopInfo& li : loops_) {
+    for (LoopInfo& li : loops_) {
       PrintF("Loop %d headed at #%d\n", i, li.header->id());
       i++;
     }
@@ -114,249 +132,118 @@ class LoopFinderImpl {
   }
 
  private:
-  Zone* zone_;
   Node* end_;
   NodeDeque queue_;
   NodeMarker<bool> queued_;
   ZoneVector<NodeInfo> info_;
-  ZoneVector<TempLoopInfo> loops_;
-  ZoneVector<int> loop_num_;
+  ZoneVector<LoopInfo> loops_;
   LoopTree* loop_tree_;
-  int loops_found_;
-  int width_;
-  uint32_t* backward_;
-  uint32_t* forward_;
-  TickCounter* const tick_counter_;
-
-  int num_nodes() {
-    return static_cast<int>(loop_tree_->node_to_loop_num_.size());
-  }
-
-  // Tb = Tb | (Fb - loop_filter)
-  bool PropagateBackwardMarks(Node* from, Node* to, int loop_filter) {
-    if (from == to) return false;
-    uint32_t* fp = &backward_[from->id() * width_];
-    uint32_t* tp = &backward_[to->id() * width_];
-    bool change = false;
-    for (int i = 0; i < width_; i++) {
-      uint32_t mask = i == INDEX(loop_filter) ? ~BIT(loop_filter) : 0xFFFFFFFF;
-      uint32_t prev = tp[i];
-      uint32_t next = prev | (fp[i] & mask);
-      tp[i] = next;
-      if (!change && (prev != next)) change = true;
-    }
-    return change;
-  }
-
-  // Tb = Tb | B
-  bool SetBackwardMark(Node* to, int loop_num) {
-    uint32_t* tp = &backward_[to->id() * width_ + INDEX(loop_num)];
-    uint32_t prev = tp[0];
-    uint32_t next = prev | BIT(loop_num);
-    tp[0] = next;
-    return next != prev;
-  }
-
-  // Tf = Tf | B
-  bool SetForwardMark(Node* to, int loop_num) {
-    uint32_t* tp = &forward_[to->id() * width_ + INDEX(loop_num)];
-    uint32_t prev = tp[0];
-    uint32_t next = prev | BIT(loop_num);
-    tp[0] = next;
-    return next != prev;
-  }
-
-  // Tf = Tf | (Ff & Tb)
-  bool PropagateForwardMarks(Node* from, Node* to) {
-    if (from == to) return false;
-    bool change = false;
-    int findex = from->id() * width_;
-    int tindex = to->id() * width_;
-    for (int i = 0; i < width_; i++) {
-      uint32_t marks = backward_[tindex + i] & forward_[findex + i];
-      uint32_t prev = forward_[tindex + i];
-      uint32_t next = prev | marks;
-      forward_[tindex + i] = next;
-      if (!change && (prev != next)) change = true;
-    }
-    return change;
-  }
-
-  bool IsInLoop(Node* node, int loop_num) {
-    int offset = node->id() * width_ + INDEX(loop_num);
-    return backward_[offset] & forward_[offset] & BIT(loop_num);
-  }
+  size_t loops_found_;
 
   // Propagate marks backward from loop headers.
   void PropagateBackward() {
-    ResizeBackwardMarks();
-    SetBackwardMark(end_, 0);
-    Queue(end_);
+    PropagateBackward(end_, kVisited);
 
     while (!queue_.empty()) {
-      tick_counter_->TickAndMaybeEnterSafepoint();
       Node* node = queue_.front();
-      info(node).backwards_visited = true;
       queue_.pop_front();
       queued_.Set(node, false);
 
-      int loop_num = -1;
       // Setup loop headers first.
       if (node->opcode() == IrOpcode::kLoop) {
         // found the loop node first.
-        loop_num = CreateLoopInfo(node);
-      } else if (NodeProperties::IsPhi(node)) {
+        CreateLoopInfo(node);
+      } else if (node->opcode() == IrOpcode::kPhi ||
+                 node->opcode() == IrOpcode::kEffectPhi) {
         // found a phi first.
         Node* merge = node->InputAt(node->InputCount() - 1);
-        if (merge->opcode() == IrOpcode::kLoop) {
-          loop_num = CreateLoopInfo(merge);
-        }
-      } else if (node->opcode() == IrOpcode::kLoopExit) {
-        // Intentionally ignore return value. Loop exit node marks
-        // are propagated normally.
-        CreateLoopInfo(node->InputAt(1));
-      } else if (node->opcode() == IrOpcode::kLoopExitValue ||
-                 node->opcode() == IrOpcode::kLoopExitEffect) {
-        Node* loop_exit = NodeProperties::GetControlInput(node);
-        // Intentionally ignore return value. Loop exit node marks
-        // are propagated normally.
-        CreateLoopInfo(loop_exit->InputAt(1));
+        if (merge->opcode() == IrOpcode::kLoop) CreateLoopInfo(merge);
       }
 
-      // Propagate marks backwards from this node.
-      for (int i = 0; i < node->InputCount(); i++) {
-        Node* input = node->InputAt(i);
-        if (IsBackedge(node, i)) {
-          // Only propagate the loop mark on backedges.
-          if (SetBackwardMark(input, loop_num) ||
-              !info(input).backwards_visited) {
-            Queue(input);
+      // Propagate reachability marks backwards from this node.
+      NodeInfo& ni = info(node);
+      if (ni.IsLoopHeader()) {
+        // Handle edges from loop header nodes specially.
+        for (int i = 0; i < node->InputCount(); i++) {
+          if (i == kAssumedLoopEntryIndex) {
+            // Don't propagate the loop mark backwards on the entry edge.
+            PropagateBackward(node->InputAt(0),
+                              kVisited | (ni.backward & ~ni.loop_mark));
+          } else {
+            // Only propagate the loop mark on backedges.
+            PropagateBackward(node->InputAt(i), ni.loop_mark);
           }
-        } else {
-          // Entry or normal edge. Propagate all marks except loop_num.
-          // TODO(manoskouk): Add test that needs backwards_visited to function
-          // correctly, probably using wasm loop unrolling when it is available.
-          if (PropagateBackwardMarks(node, input, loop_num) ||
-              !info(input).backwards_visited) {
-            Queue(input);
-          }
+        }
+      } else {
+        // Propagate all loop marks backwards for a normal node.
+        for (Node* const input : node->inputs()) {
+          PropagateBackward(input, ni.backward);
         }
       }
     }
   }
 
-  // Make a new loop if necessary for the given node.
-  int CreateLoopInfo(Node* node) {
-    DCHECK_EQ(IrOpcode::kLoop, node->opcode());
-    int loop_num = LoopNum(node);
-    if (loop_num > 0) return loop_num;
+  // Make a new loop header for the given node.
+  void CreateLoopInfo(Node* node) {
+    NodeInfo& ni = info(node);
+    if (ni.IsLoopHeader()) return;  // loop already set up.
 
-    loop_num = ++loops_found_;
-    if (INDEX(loop_num) >= width_) ResizeBackwardMarks();
-
+    loops_found_++;
+    size_t loop_num = loops_.size() + 1;
+    CHECK(loops_found_ <= kMaxLoops);  // TODO(titzer): don't crash.
     // Create a new loop.
-    loops_.push_back({node, nullptr, nullptr, nullptr, nullptr});
+    loops_.push_back({node, nullptr, nullptr, nullptr});
     loop_tree_->NewLoop();
-    SetLoopMarkForLoopHeader(node, loop_num);
-    return loop_num;
-  }
+    LoopMarks loop_mark = kVisited | (1 << loop_num);
+    ni.node = node;
+    ni.loop_mark = loop_mark;
 
-  void SetLoopMark(Node* node, int loop_num) {
-    info(node);  // create the NodeInfo
-    SetBackwardMark(node, loop_num);
-    loop_tree_->node_to_loop_num_[node->id()] = loop_num;
-  }
-
-  void SetLoopMarkForLoopHeader(Node* node, int loop_num) {
-    DCHECK_EQ(IrOpcode::kLoop, node->opcode());
-    SetLoopMark(node, loop_num);
+    // Setup loop mark for phis attached to loop header.
     for (Node* use : node->uses()) {
-      if (NodeProperties::IsPhi(use)) {
-        SetLoopMark(use, loop_num);
-      }
-
-      // Do not keep the loop alive if it does not have any backedges.
-      if (node->InputCount() <= 1) continue;
-
-      if (use->opcode() == IrOpcode::kLoopExit) {
-        SetLoopMark(use, loop_num);
-        for (Node* exit_use : use->uses()) {
-          if (exit_use->opcode() == IrOpcode::kLoopExitValue ||
-              exit_use->opcode() == IrOpcode::kLoopExitEffect) {
-            SetLoopMark(exit_use, loop_num);
-          }
-        }
+      if (use->opcode() == IrOpcode::kPhi ||
+          use->opcode() == IrOpcode::kEffectPhi) {
+        info(use).loop_mark = loop_mark;
       }
     }
-  }
-
-  void ResizeBackwardMarks() {
-    int new_width = width_ + 1;
-    int max = num_nodes();
-    uint32_t* new_backward = zone_->AllocateArray<uint32_t>(new_width * max);
-    memset(new_backward, 0, new_width * max * sizeof(uint32_t));
-    if (width_ > 0) {  // copy old matrix data.
-      for (int i = 0; i < max; i++) {
-        uint32_t* np = &new_backward[i * new_width];
-        uint32_t* op = &backward_[i * width_];
-        for (int j = 0; j < width_; j++) np[j] = op[j];
-      }
-    }
-    width_ = new_width;
-    backward_ = new_backward;
-  }
-
-  void ResizeForwardMarks() {
-    int max = num_nodes();
-    forward_ = zone_->AllocateArray<uint32_t>(width_ * max);
-    memset(forward_, 0, width_ * max * sizeof(uint32_t));
   }
 
   // Propagate marks forward from loops.
   void PropagateForward() {
-    ResizeForwardMarks();
-    for (TempLoopInfo& li : loops_) {
-      SetForwardMark(li.header, LoopNum(li.header));
-      Queue(li.header);
+    for (LoopInfo& li : loops_) {
+      queued_.Set(li.header, true);
+      queue_.push_back(li.header);
+      NodeInfo& ni = info(li.header);
+      ni.forward = ni.loop_mark;
     }
     // Propagate forward on paths that were backward reachable from backedges.
     while (!queue_.empty()) {
-      tick_counter_->TickAndMaybeEnterSafepoint();
       Node* node = queue_.front();
       queue_.pop_front();
       queued_.Set(node, false);
+      NodeInfo& ni = info(node);
       for (Edge edge : node->use_edges()) {
         Node* use = edge.from();
-        if (!IsBackedge(use, edge.index())) {
-          if (PropagateForwardMarks(node, use)) Queue(use);
+        NodeInfo& ui = info(use);
+        if (IsBackedge(use, ui, edge)) continue;  // skip backedges.
+        LoopMarks both = ni.forward & ui.backward;
+        if (ui.MarkForward(both) && !queued_.Get(use)) {
+          queued_.Set(use, true);
+          queue_.push_back(use);
         }
       }
     }
   }
 
-  bool IsLoopHeaderNode(Node* node) {
-    return node->opcode() == IrOpcode::kLoop || NodeProperties::IsPhi(node);
-  }
-
-  bool IsLoopExitNode(Node* node) {
-    return node->opcode() == IrOpcode::kLoopExit ||
-           node->opcode() == IrOpcode::kLoopExitValue ||
-           node->opcode() == IrOpcode::kLoopExitEffect;
-  }
-
-  bool IsBackedge(Node* use, int index) {
-    if (LoopNum(use) <= 0) return false;
-    if (NodeProperties::IsPhi(use)) {
-      return index != NodeProperties::FirstControlIndex(use) &&
-             index != kAssumedLoopEntryIndex;
-    } else if (use->opcode() == IrOpcode::kLoop) {
-      return index != kAssumedLoopEntryIndex;
+  bool IsBackedge(Node* use, NodeInfo& ui, Edge& edge) {
+    // TODO(titzer): checking for backedges here is ugly.
+    if (!ui.IsLoopHeader()) return false;
+    if (edge.index() == kAssumedLoopEntryIndex) return false;
+    if (use->opcode() == IrOpcode::kPhi ||
+        use->opcode() == IrOpcode::kEffectPhi) {
+      return !NodeProperties::IsControlEdge(edge);
     }
-    DCHECK(IsLoopExitNode(use));
-    return false;
+    return true;
   }
-
-  int LoopNum(Node* node) { return loop_tree_->node_to_loop_num_[node->id()]; }
 
   NodeInfo& info(Node* node) {
     NodeInfo& i = info_[node->id()];
@@ -364,70 +251,44 @@ class LoopFinderImpl {
     return i;
   }
 
-  void Queue(Node* node) {
-    if (!queued_.Get(node)) {
+  void PropagateBackward(Node* node, LoopMarks marks) {
+    if (info(node).MarkBackward(marks) && !queued_.Get(node)) {
       queue_.push_back(node);
       queued_.Set(node, true);
     }
   }
 
-  void AddNodeToLoop(NodeInfo* node_info, TempLoopInfo* loop, int loop_num) {
-    if (LoopNum(node_info->node) == loop_num) {
-      if (IsLoopHeaderNode(node_info->node)) {
-        node_info->next = loop->header_list;
-        loop->header_list = node_info;
-      } else {
-        DCHECK(IsLoopExitNode(node_info->node));
-        node_info->next = loop->exit_list;
-        loop->exit_list = node_info;
-      }
-    } else {
-      node_info->next = loop->body_list;
-      loop->body_list = node_info;
-    }
-  }
-
   void FinishLoopTree() {
-    DCHECK(loops_found_ == static_cast<int>(loops_.size()));
-    DCHECK(loops_found_ == static_cast<int>(loop_tree_->all_loops_.size()));
-
     // Degenerate cases.
-    if (loops_found_ == 0) return;
-    if (loops_found_ == 1) return FinishSingleLoop();
+    if (loops_.size() == 0) return;
+    if (loops_.size() == 1) return FinishSingleLoop();
 
-    for (int i = 1; i <= loops_found_; i++) ConnectLoopTree(i);
+    for (size_t i = 1; i <= loops_.size(); i++) ConnectLoopTree(i);
 
     size_t count = 0;
     // Place the node into the innermost nested loop of which it is a member.
     for (NodeInfo& ni : info_) {
-      if (ni.node == nullptr) continue;
+      if (ni.node == nullptr || !ni.IsInAnyLoop()) continue;
 
-      TempLoopInfo* innermost = nullptr;
-      int innermost_index = 0;
-      int pos = ni.node->id() * width_;
-      // Search the marks word by word.
-      for (int i = 0; i < width_; i++) {
-        uint32_t marks = backward_[pos + i] & forward_[pos + i];
-
-        for (int j = 0; j < 32; j++) {
-          if (marks & (1u << j)) {
-            int loop_num = i * 32 + j;
-            if (loop_num == 0) continue;
-            TempLoopInfo* loop = &loops_[loop_num - 1];
-            if (innermost == nullptr ||
-                loop->loop->depth_ > innermost->loop->depth_) {
-              innermost = loop;
-              innermost_index = loop_num;
-            }
+      LoopInfo* innermost = nullptr;
+      size_t index = 0;
+      for (size_t i = 1; i <= loops_.size(); i++) {
+        if (ni.IsInLoop(i)) {
+          LoopInfo* loop = &loops_[i - 1];
+          if (innermost == nullptr ||
+              loop->loop->depth_ > innermost->loop->depth_) {
+            innermost = loop;
+            index = i;
           }
         }
       }
-      if (innermost == nullptr) continue;
-
-      // Return statements should never be found by forward or backward walk.
-      CHECK(ni.node->opcode() != IrOpcode::kReturn);
-
-      AddNodeToLoop(&ni, innermost, innermost_index);
+      if (ni.IsInHeaderForLoop(index)) {
+        ni.next = innermost->header_list;
+        innermost->header_list = &ni;
+      } else {
+        ni.next = innermost->body_list;
+        innermost->body_list = &ni;
+      }
       count++;
     }
 
@@ -440,18 +301,24 @@ class LoopFinderImpl {
 
   // Handle the simpler case of a single loop (no checks for nesting necessary).
   void FinishSingleLoop() {
+    DCHECK(loops_.size() == 1);
+    DCHECK(loop_tree_->all_loops_.size() == 1);
+
     // Place nodes into the loop header and body.
-    TempLoopInfo* li = &loops_[0];
+    LoopInfo* li = &loops_[0];
     li->loop = &loop_tree_->all_loops_[0];
     loop_tree_->SetParent(nullptr, li->loop);
     size_t count = 0;
     for (NodeInfo& ni : info_) {
-      if (ni.node == nullptr || !IsInLoop(ni.node, 1)) continue;
-
-      // Return statements should never be found by forward or backward walk.
-      CHECK(ni.node->opcode() != IrOpcode::kReturn);
-
-      AddNodeToLoop(&ni, li, 1);
+      if (ni.node == nullptr || !ni.IsInAnyLoop()) continue;
+      DCHECK(ni.IsInLoop(1));
+      if (ni.IsInHeaderForLoop(1)) {
+        ni.next = li->header_list;
+        li->header_list = &ni;
+      } else {
+        ni.next = li->body_list;
+        li->body_list = &ni;
+      }
       count++;
     }
 
@@ -463,46 +330,43 @@ class LoopFinderImpl {
   // Recursively serialize the list of header nodes and body nodes
   // so that nested loops occupy nested intervals.
   void SerializeLoop(LoopTree::Loop* loop) {
-    int loop_num = loop_tree_->LoopNum(loop);
-    TempLoopInfo& li = loops_[loop_num - 1];
+    size_t loop_num = loop_tree_->LoopNum(loop);
+    LoopInfo& li = loops_[loop_num - 1];
 
     // Serialize the header.
     loop->header_start_ = static_cast<int>(loop_tree_->loop_nodes_.size());
     for (NodeInfo* ni = li.header_list; ni != nullptr; ni = ni->next) {
       loop_tree_->loop_nodes_.push_back(ni->node);
-      loop_tree_->node_to_loop_num_[ni->node->id()] = loop_num;
+      // TODO(titzer): lift loop count restriction.
+      loop_tree_->node_to_loop_num_[ni->node->id()] =
+          static_cast<uint8_t>(loop_num);
     }
 
     // Serialize the body.
     loop->body_start_ = static_cast<int>(loop_tree_->loop_nodes_.size());
     for (NodeInfo* ni = li.body_list; ni != nullptr; ni = ni->next) {
       loop_tree_->loop_nodes_.push_back(ni->node);
-      loop_tree_->node_to_loop_num_[ni->node->id()] = loop_num;
+      // TODO(titzer): lift loop count restriction.
+      loop_tree_->node_to_loop_num_[ni->node->id()] =
+          static_cast<uint8_t>(loop_num);
     }
 
     // Serialize nested loops.
     for (LoopTree::Loop* child : loop->children_) SerializeLoop(child);
 
-    // Serialize the exits.
-    loop->exits_start_ = static_cast<int>(loop_tree_->loop_nodes_.size());
-    for (NodeInfo* ni = li.exit_list; ni != nullptr; ni = ni->next) {
-      loop_tree_->loop_nodes_.push_back(ni->node);
-      loop_tree_->node_to_loop_num_[ni->node->id()] = loop_num;
-    }
-
-    loop->exits_end_ = static_cast<int>(loop_tree_->loop_nodes_.size());
+    loop->body_end_ = static_cast<int>(loop_tree_->loop_nodes_.size());
   }
 
   // Connect the LoopTree loops to their parents recursively.
-  LoopTree::Loop* ConnectLoopTree(int loop_num) {
-    TempLoopInfo& li = loops_[loop_num - 1];
+  LoopTree::Loop* ConnectLoopTree(size_t loop_num) {
+    LoopInfo& li = loops_[loop_num - 1];
     if (li.loop != nullptr) return li.loop;
 
     NodeInfo& ni = info(li.header);
     LoopTree::Loop* parent = nullptr;
-    for (int i = 1; i <= loops_found_; i++) {
+    for (size_t i = 1; i <= loops_.size(); i++) {
       if (i == loop_num) continue;
-      if (IsInLoop(ni.node, i)) {
+      if (ni.IsInLoop(i)) {
         // recursively create potential parent loops first.
         LoopTree::Loop* upper = ConnectLoopTree(i);
         if (parent == nullptr || upper->depth_ > parent->depth_) {
@@ -522,249 +386,24 @@ class LoopFinderImpl {
     while (i < loop->body_start_) {
       PrintF(" H#%d", loop_tree_->loop_nodes_[i++]->id());
     }
-    while (i < loop->exits_start_) {
+    while (i < loop->body_end_) {
       PrintF(" B#%d", loop_tree_->loop_nodes_[i++]->id());
-    }
-    while (i < loop->exits_end_) {
-      PrintF(" E#%d", loop_tree_->loop_nodes_[i++]->id());
     }
     PrintF("\n");
     for (LoopTree::Loop* child : loop->children_) PrintLoop(child);
   }
 };
 
-LoopTree* LoopFinder::BuildLoopTree(TFGraph* graph, TickCounter* tick_counter,
-                                    Zone* zone) {
+
+LoopTree* LoopFinder::BuildLoopTree(Graph* graph, Zone* zone) {
   LoopTree* loop_tree =
-      graph->zone()->New<LoopTree>(graph->NodeCount(), graph->zone());
-  LoopFinderImpl finder(graph, loop_tree, tick_counter, zone);
+      new (graph->zone()) LoopTree(graph->NodeCount(), graph->zone());
+  LoopFinderImpl finder(graph, loop_tree, zone);
   finder.Run();
-  if (v8_flags.trace_turbo_loop) {
+  if (FLAG_trace_turbo_graph) {
     finder.Print();
   }
   return loop_tree;
-}
-
-#if V8_ENABLE_WEBASSEMBLY
-// static
-ZoneUnorderedSet<Node*>* LoopFinder::FindSmallInnermostLoopFromHeader(
-    Node* loop_header, AllNodes& all_nodes, Zone* zone, size_t max_size,
-    Purpose purpose) {
-  auto* visited = zone->New<ZoneUnorderedSet<Node*>>(zone);
-  std::vector<Node*> queue;
-
-  DCHECK_EQ(loop_header->opcode(), IrOpcode::kLoop);
-
-  queue.push_back(loop_header);
-  visited->insert(loop_header);
-
-#define ENQUEUE_USES(use_name, condition)             \
-  for (Node * use_name : node->uses()) {              \
-    if (condition && visited->count(use_name) == 0) { \
-      visited->insert(use_name);                      \
-      queue.push_back(use_name);                      \
-    }                                                 \
-  }
-  bool has_instruction_worth_peeling = false;
-  while (!queue.empty()) {
-    Node* node = queue.back();
-    queue.pop_back();
-    if (node->opcode() == IrOpcode::kEnd) {
-      // We reached the end of the graph. The end node is not part of the loop.
-      visited->erase(node);
-      continue;
-    }
-    if (visited->size() > max_size) return nullptr;
-    switch (node->opcode()) {
-      case IrOpcode::kLoop:
-        // Found nested loop.
-        if (node != loop_header) return nullptr;
-        ENQUEUE_USES(use, true);
-        break;
-      case IrOpcode::kLoopExit:
-        // Found nested loop.
-        if (node->InputAt(1) != loop_header) return nullptr;
-        // LoopExitValue/Effect uses are inside the loop. The rest are not.
-        ENQUEUE_USES(use, (use->opcode() == IrOpcode::kLoopExitEffect ||
-                           use->opcode() == IrOpcode::kLoopExitValue))
-        break;
-      case IrOpcode::kLoopExitEffect:
-      case IrOpcode::kLoopExitValue:
-        if (NodeProperties::GetControlInput(node)->InputAt(1) != loop_header) {
-          // Found nested loop.
-          return nullptr;
-        }
-        // All uses are outside the loop, do nothing.
-        break;
-      // If unrolling, call nodes are considered to have unbounded size,
-      // i.e. >max_size, with the exception of certain wasm builtins.
-      case IrOpcode::kTailCall:
-      case IrOpcode::kJSWasmCall:
-      case IrOpcode::kJSCall:
-        if (purpose == Purpose::kLoopUnrolling) return nullptr;
-        ENQUEUE_USES(use, true)
-        break;
-      case IrOpcode::kCall: {
-        if (purpose == Purpose::kLoopPeeling) {
-          ENQUEUE_USES(use, true);
-          break;
-        }
-        Node* callee = node->InputAt(0);
-        if (callee->opcode() != IrOpcode::kRelocatableInt32Constant &&
-            callee->opcode() != IrOpcode::kRelocatableInt64Constant) {
-          return nullptr;
-        }
-        Builtin builtin = static_cast<Builtin>(
-            OpParameter<RelocatablePtrConstantInfo>(callee->op()).value());
-        constexpr Builtin unrollable_builtins[] = {
-            // Exists in every stack check.
-            Builtin::kWasmStackGuard,
-            // Fast table operations.
-            Builtin::kWasmTableGet, Builtin::kWasmTableSet,
-            Builtin::kWasmTableGetFuncRef, Builtin::kWasmTableSetFuncRef,
-            Builtin::kWasmTableGrow,
-            // Atomics.
-            Builtin::kWasmI32AtomicWait, Builtin::kWasmI64AtomicWait,
-            // Exceptions.
-            Builtin::kWasmAllocateFixedArray, Builtin::kWasmThrow,
-            Builtin::kWasmRethrow, Builtin::kWasmRethrowExplicitContext,
-            // Fast wasm-gc operations.
-            Builtin::kWasmRefFunc,
-            // While a built-in call, this is the slow path, so it should not
-            // prevent loop unrolling for stringview_wtf16.get_codeunit.
-            Builtin::kWasmStringViewWtf16GetCodeUnit};
-        if (std::count(std::begin(unrollable_builtins),
-                       std::end(unrollable_builtins), builtin) == 0) {
-          return nullptr;
-        }
-        ENQUEUE_USES(use, true)
-        break;
-      }
-      case IrOpcode::kWasmStructGet: {
-        // When a chained load occurs in the loop, assume that peeling might
-        // help.
-        Node* object = node->InputAt(0);
-        if (object->opcode() == IrOpcode::kWasmStructGet &&
-            visited->find(object) != visited->end()) {
-          has_instruction_worth_peeling = true;
-        }
-        ENQUEUE_USES(use, true);
-        break;
-      }
-      case IrOpcode::kWasmArrayGet:
-        // Rationale for array.get: loops that contain an array.get also
-        // contain a bounds check, which needs to load the array's length,
-        // which benefits from load elimination after peeling.
-      case IrOpcode::kStringPrepareForGetCodeunit:
-        // Rationale for PrepareForGetCodeunit: this internal operation is
-        // specifically designed for being hoisted out of loops.
-        has_instruction_worth_peeling = true;
-        [[fallthrough]];
-      default:
-        ENQUEUE_USES(use, true)
-        break;
-    }
-  }
-
-  // Check that there is no floating control other than direct nodes to start().
-  // We do this by checking that all non-start control inputs of loop nodes are
-  // also in the loop.
-  // TODO(manoskouk): This is a safety check. Consider making it DEBUG-only when
-  // we are confident there is no incompatible floating control generated in
-  // wasm.
-  for (Node* node : *visited) {
-    // The loop header is allowed to point outside the loop.
-    if (node == loop_header) continue;
-
-    if (!all_nodes.IsLive(node)) continue;
-
-    for (Edge edge : node->input_edges()) {
-      Node* input = edge.to();
-      if (NodeProperties::IsControlEdge(edge) && visited->count(input) == 0 &&
-          input->opcode() != IrOpcode::kStart) {
-        FATAL(
-            "Floating control detected in wasm turbofan graph: Node #%d:%s is "
-            "inside loop headed by #%d, but its control dependency #%d:%s is "
-            "outside",
-            node->id(), node->op()->mnemonic(), loop_header->id(), input->id(),
-            input->op()->mnemonic());
-      }
-    }
-  }
-
-  // Only peel functions containing instructions for which loop peeling is known
-  // to be useful. TODO(14034): Add more instructions to get more benefits out
-  // of loop peeling.
-  if (purpose == Purpose::kLoopPeeling && !has_instruction_worth_peeling) {
-    return nullptr;
-  }
-  return visited;
-}
-#endif  // V8_ENABLE_WEBASSEMBLY
-
-bool LoopFinder::HasMarkedExits(LoopTree* loop_tree,
-                                const LoopTree::Loop* loop) {
-  // Look for returns and if projections that are outside the loop but whose
-  // control input is inside the loop.
-  Node* loop_node = loop_tree->GetLoopControl(loop);
-  for (Node* node : loop_tree->LoopNodes(loop)) {
-    for (Node* use : node->uses()) {
-      if (!loop_tree->Contains(loop, use)) {
-        bool unmarked_exit;
-        switch (node->opcode()) {
-          case IrOpcode::kLoopExit:
-            unmarked_exit = (node->InputAt(1) != loop_node);
-            break;
-          case IrOpcode::kLoopExitValue:
-          case IrOpcode::kLoopExitEffect:
-            unmarked_exit = (node->InputAt(1)->InputAt(1) != loop_node);
-            break;
-          default:
-            unmarked_exit = (use->opcode() != IrOpcode::kTerminate);
-        }
-        if (unmarked_exit) {
-          if (v8_flags.trace_turbo_loop) {
-            PrintF(
-                "Cannot peel loop %i. Loop exit without explicit mark: Node %i "
-                "(%s) is inside loop, but its use %i (%s) is outside.\n",
-                loop_node->id(), node->id(), node->op()->mnemonic(), use->id(),
-                use->op()->mnemonic());
-          }
-          return false;
-        }
-      }
-    }
-  }
-  return true;
-}
-
-Node* LoopTree::HeaderNode(const Loop* loop) {
-  Node* first = *HeaderNodes(loop).begin();
-  if (first->opcode() == IrOpcode::kLoop) return first;
-  DCHECK(IrOpcode::IsPhiOpcode(first->opcode()));
-  Node* header = NodeProperties::GetControlInput(first);
-  DCHECK_EQ(IrOpcode::kLoop, header->opcode());
-  return header;
-}
-
-Node* NodeCopier::map(Node* node, uint32_t copy_index) {
-  DCHECK_LT(copy_index, copy_count_);
-  if (node_map_.Get(node) == 0) return node;
-  return copies_->at(node_map_.Get(node) + copy_index);
-}
-
-void NodeCopier::Insert(Node* original, const NodeVector& new_copies) {
-  DCHECK_EQ(new_copies.size(), copy_count_);
-  node_map_.Set(original, copies_->size() + 1);
-  copies_->push_back(original);
-  copies_->insert(copies_->end(), new_copies.begin(), new_copies.end());
-}
-
-void NodeCopier::Insert(Node* original, Node* copy) {
-  DCHECK_EQ(copy_count_, 1);
-  node_map_.Set(original, copies_->size() + 1);
-  copies_->push_back(original);
-  copies_->push_back(copy);
 }
 
 }  // namespace compiler

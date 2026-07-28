@@ -6,40 +6,36 @@
 #define V8_COMPILER_SCHEDULE_H_
 
 #include <iosfwd>
+#include <vector>
 
-#include "src/base/compiler-specific.h"
-#include "src/common/globals.h"
-#include "src/zone/zone-containers.h"
+#include "src/v8.h"
+
+#include "src/compiler/node.h"
+#include "src/compiler/opcodes.h"
+#include "src/zone.h"
 
 namespace v8 {
 namespace internal {
 namespace compiler {
 
-// Forward declarations.
 class BasicBlock;
-class Node;
-
-using BasicBlockVector = ZoneVector<BasicBlock*>;
-using NodeVector = ZoneVector<Node*>;
+class BasicBlockInstrumentor;
+class Graph;
+class ConstructScheduleData;
+class CodeGenerator;  // Because of a namespace bug in clang.
 
 // A basic block contains an ordered list of nodes and ends with a control
 // node. Note that if a basic block has phis, then all phis must appear as the
 // first nodes in the block.
-class V8_EXPORT_PRIVATE BasicBlock final
-    : public NON_EXPORTED_BASE(ZoneObject) {
+class BasicBlock FINAL : public ZoneObject {
  public:
   // Possible control nodes that can end a block.
   enum Control {
-    kNone,        // Control not initialized yet.
-    kGoto,        // Goto a single successor block.
-    kCall,        // Call with continuation as first successor, exception
-                  // second.
-    kBranch,      // Branch if true to first successor, otherwise second.
-    kSwitch,      // Table dispatch to one of the successor blocks.
-    kDeoptimize,  // Return a value from this method.
-    kTailCall,    // Tail call another method from this method.
-    kReturn,      // Return a value from this method.
-    kThrow        // Throw an exception.
+    kNone,    // Control not initialized yet.
+    kGoto,    // Goto a single successor block.
+    kBranch,  // Branch if true to first successor, otherwise second.
+    kReturn,  // Return a value from this method.
+    kThrow    // Throw an exception.
   };
 
   class Id {
@@ -54,58 +50,81 @@ class V8_EXPORT_PRIVATE BasicBlock final
     size_t index_;
   };
 
+  static const int kInvalidRpoNumber = -1;
+  class RpoNumber FINAL {
+   public:
+    int ToInt() const {
+      DCHECK(IsValid());
+      return index_;
+    }
+    size_t ToSize() const {
+      DCHECK(IsValid());
+      return static_cast<size_t>(index_);
+    }
+    bool IsValid() const { return index_ >= 0; }
+    static RpoNumber FromInt(int index) { return RpoNumber(index); }
+    static RpoNumber Invalid() { return RpoNumber(kInvalidRpoNumber); }
+
+    bool IsNext(const RpoNumber other) const {
+      DCHECK(IsValid());
+      return other.index_ == this->index_ + 1;
+    }
+
+    bool operator==(RpoNumber other) const {
+      return this->index_ == other.index_;
+    }
+
+   private:
+    explicit RpoNumber(int32_t index) : index_(index) {}
+    int32_t index_;
+  };
+
   BasicBlock(Zone* zone, Id id);
-  BasicBlock(const BasicBlock&) = delete;
-  BasicBlock& operator=(const BasicBlock&) = delete;
 
   Id id() const { return id_; }
-#if DEBUG
-  void set_debug_info(AssemblerDebugInfo debug_info) {
-    debug_info_ = debug_info;
+
+  // Predecessors and successors.
+  typedef ZoneVector<BasicBlock*> Predecessors;
+  Predecessors::iterator predecessors_begin() { return predecessors_.begin(); }
+  Predecessors::iterator predecessors_end() { return predecessors_.end(); }
+  Predecessors::const_iterator predecessors_begin() const {
+    return predecessors_.begin();
   }
-  AssemblerDebugInfo debug_info() const { return debug_info_; }
-#endif  // DEBUG
-
-  void Print();
-
-  // Predecessors.
-  BasicBlockVector& predecessors() { return predecessors_; }
-  const BasicBlockVector& predecessors() const { return predecessors_; }
+  Predecessors::const_iterator predecessors_end() const {
+    return predecessors_.end();
+  }
   size_t PredecessorCount() const { return predecessors_.size(); }
   BasicBlock* PredecessorAt(size_t index) { return predecessors_[index]; }
   void ClearPredecessors() { predecessors_.clear(); }
   void AddPredecessor(BasicBlock* predecessor);
-  void RemovePredecessor(size_t index);
 
-  // Successors.
-  BasicBlockVector& successors() { return successors_; }
-  const BasicBlockVector& successors() const { return successors_; }
+  typedef ZoneVector<BasicBlock*> Successors;
+  Successors::iterator successors_begin() { return successors_.begin(); }
+  Successors::iterator successors_end() { return successors_.end(); }
+  Successors::const_iterator successors_begin() const {
+    return successors_.begin();
+  }
+  Successors::const_iterator successors_end() const {
+    return successors_.end();
+  }
   size_t SuccessorCount() const { return successors_.size(); }
   BasicBlock* SuccessorAt(size_t index) { return successors_[index]; }
   void ClearSuccessors() { successors_.clear(); }
   void AddSuccessor(BasicBlock* successor);
 
   // Nodes in the basic block.
-  using value_type = Node*;
-  bool empty() const { return nodes_.empty(); }
-  size_t size() const { return nodes_.size(); }
   Node* NodeAt(size_t index) { return nodes_[index]; }
   size_t NodeCount() const { return nodes_.size(); }
 
-  value_type& front() { return nodes_.front(); }
-  value_type const& front() const { return nodes_.front(); }
-
-  using iterator = NodeVector::iterator;
+  typedef NodeVector::iterator iterator;
   iterator begin() { return nodes_.begin(); }
   iterator end() { return nodes_.end(); }
 
-  void RemoveNode(iterator it) { nodes_.erase(it); }
-
-  using const_iterator = NodeVector::const_iterator;
+  typedef NodeVector::const_iterator const_iterator;
   const_iterator begin() const { return nodes_.begin(); }
   const_iterator end() const { return nodes_.end(); }
 
-  using reverse_iterator = NodeVector::reverse_iterator;
+  typedef NodeVector::reverse_iterator reverse_iterator;
   reverse_iterator rbegin() { return nodes_.rbegin(); }
   reverse_iterator rend() { return nodes_.rend(); }
 
@@ -115,11 +134,6 @@ class V8_EXPORT_PRIVATE BasicBlock final
                    InputIterator insertion_end) {
     nodes_.insert(insertion_point, insertion_start, insertion_end);
   }
-
-  // Trim basic block to end at {new_end}.
-  void TrimNodes(iterator new_end);
-
-  void ResetRPOInfo();
 
   // Accessors.
   Control control() const { return control_; }
@@ -152,23 +166,13 @@ class V8_EXPORT_PRIVATE BasicBlock final
   int32_t loop_number() const { return loop_number_; }
   void set_loop_number(int32_t loop_number) { loop_number_ = loop_number; }
 
+  RpoNumber GetRpoNumber() const { return RpoNumber::FromInt(rpo_number_); }
   int32_t rpo_number() const { return rpo_number_; }
   void set_rpo_number(int32_t rpo_number);
 
-  NodeVector* nodes() { return &nodes_; }
-
-#ifdef LOG_BUILTIN_BLOCK_COUNT
-  uint64_t pgo_execution_count() { return pgo_execution_count_; }
-  void set_pgo_execution_count(uint64_t count) { pgo_execution_count_ = count; }
-#endif
-
   // Loop membership helpers.
-  inline bool IsLoopHeader() const { return loop_end_ != nullptr; }
+  inline bool IsLoopHeader() const { return loop_end_ != NULL; }
   bool LoopContains(BasicBlock* block) const;
-
-  // Computes the immediate common dominator of {b1} and {b2}. The worst time
-  // complexity is O(N) where N is the height of the dominator tree.
-  static BasicBlock* GetCommonDominator(BasicBlock* b1, BasicBlock* b2);
 
  private:
   int32_t loop_number_;      // loop number of the block.
@@ -178,46 +182,43 @@ class V8_EXPORT_PRIVATE BasicBlock final
   BasicBlock* dominator_;    // Immediate dominator of the block.
   BasicBlock* rpo_next_;     // Link to next block in special RPO order.
   BasicBlock* loop_header_;  // Pointer to dominating loop header basic block,
-  // nullptr if none. For loop headers, this points to
-  // enclosing loop header.
-  BasicBlock* loop_end_;  // end of the loop, if this block is a loop header.
-  int32_t loop_depth_;    // loop nesting, 0 is top-level
+                             // NULL if none. For loop headers, this points to
+                             // enclosing loop header.
+  BasicBlock* loop_end_;     // end of the loop, if this block is a loop header.
+  int32_t loop_depth_;       // loop nesting, 0 is top-level
 
-  Control control_;      // Control at the end of the block.
-  Node* control_input_;  // Input value for control.
-  NodeVector nodes_;     // nodes of this block in forward order.
+  Control control_;          // Control at the end of the block.
+  Node* control_input_;      // Input value for control.
+  NodeVector nodes_;         // nodes of this block in forward order.
 
-  BasicBlockVector successors_;
-  BasicBlockVector predecessors_;
-#if DEBUG
-  AssemblerDebugInfo debug_info_;
-#endif
-#ifdef LOG_BUILTIN_BLOCK_COUNT
-  uint64_t pgo_execution_count_;
-#endif
+  Successors successors_;
+  Predecessors predecessors_;
   Id id_;
+
+  DISALLOW_COPY_AND_ASSIGN(BasicBlock);
 };
 
-std::ostream& operator<<(std::ostream&, const BasicBlock&);
-std::ostream& operator<<(std::ostream&, const BasicBlock::Control&);
-std::ostream& operator<<(std::ostream&, const BasicBlock::Id&);
+std::ostream& operator<<(std::ostream& os, const BasicBlock::Control& c);
+std::ostream& operator<<(std::ostream& os, const BasicBlock::Id& id);
+std::ostream& operator<<(std::ostream& os, const BasicBlock::RpoNumber& rpo);
+
+typedef ZoneVector<BasicBlock*> BasicBlockVector;
+typedef BasicBlockVector::iterator BasicBlockVectorIter;
+typedef BasicBlockVector::reverse_iterator BasicBlockVectorRIter;
 
 // A schedule represents the result of assigning nodes to basic blocks
 // and ordering them within basic blocks. Prior to computing a schedule,
 // a graph has no notion of control flow ordering other than that induced
 // by the graph's dependencies. A schedule is required to generate code.
-class V8_EXPORT_PRIVATE Schedule final : public NON_EXPORTED_BASE(ZoneObject) {
+class Schedule FINAL : public ZoneObject {
  public:
   explicit Schedule(Zone* zone, size_t node_count_hint = 0);
-  Schedule(const Schedule&) = delete;
-  Schedule& operator=(const Schedule&) = delete;
 
   // Return the block which contains {node}, if any.
   BasicBlock* block(Node* node) const;
 
   bool IsScheduled(Node* node);
   BasicBlock* GetBlockById(BasicBlock::Id block_id);
-  void ClearBlockById(BasicBlock::Id block_id);
 
   size_t BasicBlockCount() const { return all_blocks_.size(); }
   size_t RpoBlockCount() const { return rpo_order_.size(); }
@@ -238,23 +239,9 @@ class V8_EXPORT_PRIVATE Schedule final : public NON_EXPORTED_BASE(ZoneObject) {
   // BasicBlock building: add a goto to the end of {block}.
   void AddGoto(BasicBlock* block, BasicBlock* succ);
 
-  // BasicBlock building: add a call at the end of {block}.
-  void AddCall(BasicBlock* block, Node* call, BasicBlock* success_block,
-               BasicBlock* exception_block);
-
   // BasicBlock building: add a branch at the end of {block}.
   void AddBranch(BasicBlock* block, Node* branch, BasicBlock* tblock,
                  BasicBlock* fblock);
-
-  // BasicBlock building: add a switch at the end of {block}.
-  void AddSwitch(BasicBlock* block, Node* sw, BasicBlock** succ_blocks,
-                 size_t succ_count);
-
-  // BasicBlock building: add a deoptimize at the end of {block}.
-  void AddDeoptimize(BasicBlock* block, Node* input);
-
-  // BasicBlock building: add a tailcall at the end of {block}.
-  void AddTailCall(BasicBlock* block, Node* input);
 
   // BasicBlock building: add a return at the end of {block}.
   void AddReturn(BasicBlock* block, Node* input);
@@ -266,16 +253,11 @@ class V8_EXPORT_PRIVATE Schedule final : public NON_EXPORTED_BASE(ZoneObject) {
   void InsertBranch(BasicBlock* block, BasicBlock* end, Node* branch,
                     BasicBlock* tblock, BasicBlock* fblock);
 
-  // BasicBlock mutation: insert a switch into the end of {block}.
-  void InsertSwitch(BasicBlock* block, BasicBlock* end, Node* sw,
-                    BasicBlock** succ_blocks, size_t succ_count);
-
   // Exposed publicly for testing only.
   void AddSuccessorForTesting(BasicBlock* block, BasicBlock* succ) {
     return AddSuccessor(block, succ);
   }
 
-  const BasicBlockVector* all_blocks() const { return &all_blocks_; }
   BasicBlockVector* rpo_order() { return &rpo_order_; }
   const BasicBlockVector* rpo_order() const { return &rpo_order_; }
 
@@ -285,23 +267,8 @@ class V8_EXPORT_PRIVATE Schedule final : public NON_EXPORTED_BASE(ZoneObject) {
   Zone* zone() const { return zone_; }
 
  private:
-  friend class GraphAssembler;
   friend class Scheduler;
-  friend class RawMachineAssembler;
-
-  // For CSA/Torque: Ensure properties of the CFG assumed by further stages.
-  void EnsureCFGWellFormedness();
-  // For CSA/Torque: Eliminates unnecessary phi nodes, including phis with a
-  // single input. The latter is necessary to ensure the property required for
-  // SSA deconstruction that the target block of a control flow split has no
-  // phis.
-  void EliminateRedundantPhiNodes();
-  // Ensure split-edge form for a hand-assembled schedule.
-  void EnsureSplitEdgeForm(BasicBlock* block);
-  // Move Phi operands to newly created merger blocks
-  void MovePhis(BasicBlock* from, BasicBlock* to);
-  // Copy deferred block markers down as far as possible
-  void PropagateDeferredMark();
+  friend class BasicBlockInstrumentor;
 
   void AddSuccessor(BasicBlock* block, BasicBlock* succ);
   void MoveSuccessors(BasicBlock* from, BasicBlock* to);
@@ -310,14 +277,16 @@ class V8_EXPORT_PRIVATE Schedule final : public NON_EXPORTED_BASE(ZoneObject) {
   void SetBlockForNode(BasicBlock* block, Node* node);
 
   Zone* zone_;
-  BasicBlockVector all_blocks_;       // All basic blocks in the schedule.
-  BasicBlockVector nodeid_to_block_;  // Map from node to containing block.
-  BasicBlockVector rpo_order_;        // Reverse-post-order block list.
+  BasicBlockVector all_blocks_;           // All basic blocks in the schedule.
+  BasicBlockVector nodeid_to_block_;      // Map from node to containing block.
+  BasicBlockVector rpo_order_;            // Reverse-post-order block list.
   BasicBlock* start_;
   BasicBlock* end_;
+
+  DISALLOW_COPY_AND_ASSIGN(Schedule);
 };
 
-V8_EXPORT_PRIVATE std::ostream& operator<<(std::ostream&, const Schedule&);
+std::ostream& operator<<(std::ostream& os, const Schedule& s);
 
 }  // namespace compiler
 }  // namespace internal

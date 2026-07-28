@@ -2,310 +2,214 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include "src/code-stubs.h"
 #include "src/compiler/js-graph.h"
-
-#include "src/codegen/code-factory.h"
-#include "src/compiler/heap-refs.h"
-#include "src/compiler/js-heap-broker.h"
-#include "src/objects/objects-inl.h"
+#include "src/compiler/node-properties-inl.h"
+#include "src/compiler/typer.h"
 
 namespace v8 {
 namespace internal {
 namespace compiler {
 
-#define GET_CACHED_FIELD(ptr, expr) (*(ptr)) ? *(ptr) : (*(ptr) = (expr))
+Node* JSGraph::ImmovableHeapConstant(Handle<HeapObject> object) {
+  Unique<HeapObject> unique = Unique<HeapObject>::CreateImmovable(object);
+  return graph()->NewNode(common()->HeapConstant(unique));
+}
 
-#define DEFINE_GETTER(name, Type, expr)                                  \
-  TNode<Type> JSGraph::name() {                                          \
-    return TNode<Type>::UncheckedCast(GET_CACHED_FIELD(&name##_, expr)); \
-  }
 
-Node* JSGraph::CEntryStubConstant(int result_size, ArgvMode argv_mode,
-                                  bool builtin_exit_frame) {
-  if (argv_mode == ArgvMode::kStack) {
-    DCHECK(result_size >= 1 && result_size <= 3);
-    if (!builtin_exit_frame) {
-      Node** ptr = nullptr;
-      if (result_size == 1) {
-        ptr = &CEntryStub1Constant_;
-      } else if (result_size == 2) {
-        ptr = &CEntryStub2Constant_;
-      } else {
-        DCHECK_EQ(3, result_size);
-        ptr = &CEntryStub3Constant_;
-      }
-      return GET_CACHED_FIELD(
-          ptr, HeapConstantNoHole(CodeFactory::CEntry(
-                   isolate(), result_size, argv_mode, builtin_exit_frame)));
+Node* JSGraph::CEntryStubConstant(int result_size) {
+  if (result_size == 1) {
+    if (!c_entry_stub_constant_.is_set()) {
+      c_entry_stub_constant_.set(
+          ImmovableHeapConstant(CEntryStub(isolate(), 1).GetCode()));
     }
-    Node** ptr = builtin_exit_frame ? &CEntryStub1WithBuiltinExitFrameConstant_
-                                    : &CEntryStub1Constant_;
-    return GET_CACHED_FIELD(
-        ptr, HeapConstantNoHole(CodeFactory::CEntry(
-                 isolate(), result_size, argv_mode, builtin_exit_frame)));
+    return c_entry_stub_constant_.get();
   }
-  return HeapConstantNoHole(CodeFactory::CEntry(isolate(), result_size,
-                                                argv_mode, builtin_exit_frame));
+
+  return ImmovableHeapConstant(CEntryStub(isolate(), result_size).GetCode());
 }
 
-Node* JSGraph::ConstantNoHole(ObjectRef ref, JSHeapBroker* broker) {
-  // This CHECK is security critical, we should never observe a hole
-  // here.  Please do not remove this! (crbug.com/1486789)
-  CHECK(ref.IsSmi() || ref.IsHeapNumber() || ref.HoleType() == HoleType::kNone);
-  if (ref.IsString()) {
-    ref = ref.AsString().UnpackIfThin(broker);
+
+Node* JSGraph::UndefinedConstant() {
+  if (!undefined_constant_.is_set()) {
+    undefined_constant_.set(
+        ImmovableHeapConstant(factory()->undefined_value()));
   }
-  return Constant(ref, broker);
+  return undefined_constant_.get();
 }
 
-Node* JSGraph::ConstantMaybeHole(ObjectRef ref, JSHeapBroker* broker) {
-  return Constant(ref, broker);
+
+Node* JSGraph::TheHoleConstant() {
+  if (!the_hole_constant_.is_set()) {
+    the_hole_constant_.set(ImmovableHeapConstant(factory()->the_hole_value()));
+  }
+  return the_hole_constant_.get();
 }
 
-Node* JSGraph::Constant(ObjectRef ref, JSHeapBroker* broker) {
-  if (ref.IsSmi()) return ConstantMaybeHole(ref.AsSmi());
-  if (ref.IsHeapNumber()) {
-    return ConstantMaybeHole(ref.AsHeapNumber().value());
-  }
 
-  switch (ref.HoleType()) {
-    case HoleType::kNone:
-      break;
-    case HoleType::kGeneric:
-      return TheHoleConstant();
-    case HoleType::kPropertyCellHole:
-      return PropertyCellHoleConstant();
-    case HoleType::kHashTableHole:
-      return HashTableHoleConstant();
-    case HoleType::kPromiseHole:
-      return PromiseHoleConstant();
-    case HoleType::kOptimizedOut:
-      return OptimizedOutConstant();
-    case HoleType::kStaleRegister:
-      return StaleRegisterConstant();
-    case HoleType::kUninitializedHole:
-      return UninitializedConstant();
-    case HoleType::kExceptionHole:
-    case HoleType::kTerminationException:
-    case HoleType::kArgumentsMarker:
-    case HoleType::kSelfReferenceMarker:
-    case HoleType::kBasicBlockCountersMarker:
-      UNREACHABLE();
+Node* JSGraph::TrueConstant() {
+  if (!true_constant_.is_set()) {
+    true_constant_.set(ImmovableHeapConstant(factory()->true_value()));
   }
+  return true_constant_.get();
+}
 
-  OddballType oddball_type =
-      ref.AsHeapObject().GetHeapObjectType(broker).oddball_type();
-  ReadOnlyRoots roots(isolate());
-  if (oddball_type == OddballType::kUndefined) {
-    DCHECK(IsUndefined(*ref.object()));
+
+Node* JSGraph::FalseConstant() {
+  if (!false_constant_.is_set()) {
+    false_constant_.set(ImmovableHeapConstant(factory()->false_value()));
+  }
+  return false_constant_.get();
+}
+
+
+Node* JSGraph::NullConstant() {
+  if (!null_constant_.is_set()) {
+    null_constant_.set(ImmovableHeapConstant(factory()->null_value()));
+  }
+  return null_constant_.get();
+}
+
+
+Node* JSGraph::ZeroConstant() {
+  if (!zero_constant_.is_set()) zero_constant_.set(NumberConstant(0.0));
+  return zero_constant_.get();
+}
+
+
+Node* JSGraph::OneConstant() {
+  if (!one_constant_.is_set()) one_constant_.set(NumberConstant(1.0));
+  return one_constant_.get();
+}
+
+
+Node* JSGraph::NaNConstant() {
+  if (!nan_constant_.is_set()) {
+    nan_constant_.set(NumberConstant(base::OS::nan_value()));
+  }
+  return nan_constant_.get();
+}
+
+
+Node* JSGraph::HeapConstant(Unique<HeapObject> value) {
+  // TODO(turbofan): canonicalize heap constants using Unique<T>
+  return graph()->NewNode(common()->HeapConstant(value));
+}
+
+
+Node* JSGraph::HeapConstant(Handle<HeapObject> value) {
+  // TODO(titzer): We could also match against the addresses of immortable
+  // immovables here, even without access to the heap, thus always
+  // canonicalizing references to them.
+  // return HeapConstant(Unique<Object>::CreateUninitialized(value));
+  // TODO(turbofan): This is a work-around to make Unique::HashCode() work for
+  // value numbering. We need some sane way to compute a unique hash code for
+  // arbitrary handles here.
+  Unique<HeapObject> unique(reinterpret_cast<Address>(*value.location()),
+                            value);
+  return HeapConstant(unique);
+}
+
+
+Node* JSGraph::Constant(Handle<Object> value) {
+  // Dereference the handle to determine if a number constant or other
+  // canonicalized node can be used.
+  if (value->IsNumber()) {
+    return Constant(value->Number());
+  } else if (value->IsUndefined()) {
     return UndefinedConstant();
-  } else if (oddball_type == OddballType::kNull) {
-    DCHECK(IsNull(*ref.object()));
+  } else if (value->IsTrue()) {
+    return TrueConstant();
+  } else if (value->IsFalse()) {
+    return FalseConstant();
+  } else if (value->IsNull()) {
     return NullConstant();
-  } else if (oddball_type == OddballType::kBoolean) {
-    if (IsTrue(*ref.object())) {
-      return TrueConstant();
-    } else {
-      DCHECK(IsFalse(*ref.object()));
-      return FalseConstant();
-    }
+  } else if (value->IsTheHole()) {
+    return TheHoleConstant();
   } else {
-    return HeapConstantNoHole(ref.AsHeapObject().object());
+    return HeapConstant(Handle<HeapObject>::cast(value));
   }
 }
 
-Node* JSGraph::ConstantMutableHeapNumber(HeapNumberRef ref,
-                                         JSHeapBroker* broker) {
-  return HeapConstantNoHole(ref.AsHeapObject().object());
+
+Node* JSGraph::Constant(double value) {
+  if (bit_cast<int64_t>(value) == bit_cast<int64_t>(0.0)) return ZeroConstant();
+  if (bit_cast<int64_t>(value) == bit_cast<int64_t>(1.0)) return OneConstant();
+  return NumberConstant(value);
 }
 
-Node* JSGraph::ConstantNoHole(double value) {
-  return ConstantNoHole(Float64::FromBits(base::bit_cast<uint64_t>(value)));
+
+Node* JSGraph::Constant(int32_t value) {
+  if (value == 0) return ZeroConstant();
+  if (value == 1) return OneConstant();
+  return NumberConstant(value);
 }
 
-Node* JSGraph::ConstantNoHole(Float64 value) {
-  CHECK(!value.is_hole_nan());
-  return ConstantMaybeHole(value);
+
+Node* JSGraph::Int32Constant(int32_t value) {
+  Node** loc = cache_.FindInt32Constant(value);
+  if (*loc == NULL) {
+    *loc = graph()->NewNode(common()->Int32Constant(value));
+  }
+  return *loc;
 }
 
-Node* JSGraph::ConstantMaybeHole(double value) {
-  return ConstantMaybeHole(Float64::FromBits(base::bit_cast<uint64_t>(value)));
+
+Node* JSGraph::Int64Constant(int64_t value) {
+  Node** loc = cache_.FindInt64Constant(value);
+  if (*loc == NULL) {
+    *loc = graph()->NewNode(common()->Int64Constant(value));
+  }
+  return *loc;
 }
 
-Node* JSGraph::ConstantMaybeHole(Float64 value) {
-  if (value == Float64(0.0)) return ZeroConstant();
-  if (value == Float64(1.0)) return OneConstant();
-  // TODO(leszeks): Make NumberConstant store Float64 too.
-  return NumberConstant(value.get_scalar());
-}
 
 Node* JSGraph::NumberConstant(double value) {
   Node** loc = cache_.FindNumberConstant(value);
-  if (*loc == nullptr) {
+  if (*loc == NULL) {
     *loc = graph()->NewNode(common()->NumberConstant(value));
   }
   return *loc;
 }
 
-Node* JSGraph::HeapConstantNoHole(Handle<HeapObject> value) {
-  CHECK(!IsAnyHole(*value));
-  Node** loc = cache_.FindHeapConstant(value);
-  if (*loc == nullptr) {
-    *loc = graph()->NewNode(common()->HeapConstant(value));
+
+Node* JSGraph::Float32Constant(float value) {
+  Node** loc = cache_.FindFloat32Constant(value);
+  if (*loc == NULL) {
+    *loc = graph()->NewNode(common()->Float32Constant(value));
   }
   return *loc;
 }
 
-Node* JSGraph::HeapConstantMaybeHole(Handle<HeapObject> value) {
-  Node** loc = cache_.FindHeapConstant(value);
-  if (*loc == nullptr) {
-    *loc = graph()->NewNode(common()->HeapConstant(value));
+
+Node* JSGraph::Float64Constant(double value) {
+  Node** loc = cache_.FindFloat64Constant(value);
+  if (*loc == NULL) {
+    *loc = graph()->NewNode(common()->Float64Constant(value));
   }
   return *loc;
 }
 
-Node* JSGraph::HeapConstantHole(Handle<HeapObject> value) {
-  DCHECK(IsAnyHole(*value));
-  Node** loc = cache_.FindHeapConstant(value);
-  if (*loc == nullptr) {
-    *loc = graph()->NewNode(common()->HeapConstant(value));
+
+Node* JSGraph::ExternalConstant(ExternalReference reference) {
+  Node** loc = cache_.FindExternalConstant(reference);
+  if (*loc == NULL) {
+    *loc = graph()->NewNode(common()->ExternalConstant(reference));
   }
   return *loc;
 }
 
-Node* JSGraph::TrustedHeapConstant(Handle<HeapObject> value) {
-  DCHECK(IsTrustedObject(*value));
-  // TODO(pthier): Consider also caching trusted constants. Right now they are
-  // only used for RegExp data as part of RegExp literals and it should be
-  // uncommon for the same literal to appear multiple times.
-  return graph()->NewNode(common()->TrustedHeapConstant(value));
-}
 
 void JSGraph::GetCachedNodes(NodeVector* nodes) {
   cache_.GetCachedNodes(nodes);
-#define DO_CACHED_FIELD(name, ...) \
-  if (name##_) nodes->push_back(name##_);
-
-  CACHED_GLOBAL_LIST(DO_CACHED_FIELD)
-  CACHED_CENTRY_LIST(DO_CACHED_FIELD)
-#undef DO_CACHED_FIELD
+  SetOncePointer<Node>* ptrs[] = {
+      &c_entry_stub_constant_, &undefined_constant_, &the_hole_constant_,
+      &true_constant_,         &false_constant_,     &null_constant_,
+      &zero_constant_,         &one_constant_,       &nan_constant_};
+  for (size_t i = 0; i < arraysize(ptrs); i++) {
+    if (ptrs[i]->is_set()) nodes->push_back(ptrs[i]->get());
+  }
 }
-
-DEFINE_GETTER(AllocateInYoungGenerationStubConstant, Code,
-              HeapConstantNoHole(BUILTIN_CODE(isolate(),
-                                              AllocateInYoungGeneration)))
-
-DEFINE_GETTER(AllocateInOldGenerationStubConstant, Code,
-              HeapConstantNoHole(BUILTIN_CODE(isolate(),
-                                              AllocateInOldGeneration)))
-
-#if V8_ENABLE_WEBASSEMBLY
-DEFINE_GETTER(WasmAllocateInYoungGenerationStubConstant, Code,
-              HeapConstantNoHole(BUILTIN_CODE(isolate(),
-                                              WasmAllocateInYoungGeneration)))
-
-DEFINE_GETTER(WasmAllocateInOldGenerationStubConstant, Code,
-              HeapConstantNoHole(BUILTIN_CODE(isolate(),
-                                              WasmAllocateInOldGeneration)))
-#endif
-
-DEFINE_GETTER(ArrayConstructorStubConstant, Code,
-              HeapConstantNoHole(BUILTIN_CODE(isolate(), ArrayConstructorImpl)))
-
-DEFINE_GETTER(BigIntMapConstant, Map,
-              HeapConstantNoHole(factory()->bigint_map()))
-
-DEFINE_GETTER(BooleanMapConstant, Map,
-              HeapConstantNoHole(factory()->boolean_map()))
-
-DEFINE_GETTER(ToNumberBuiltinConstant, Code,
-              HeapConstantNoHole(BUILTIN_CODE(isolate(), ToNumber)))
-
-DEFINE_GETTER(PlainPrimitiveToNumberBuiltinConstant, Code,
-              HeapConstantNoHole(BUILTIN_CODE(isolate(),
-                                              PlainPrimitiveToNumber)))
-
-DEFINE_GETTER(EmptyFixedArrayConstant, FixedArray,
-              HeapConstantNoHole(factory()->empty_fixed_array()))
-
-DEFINE_GETTER(EmptyStringConstant, String,
-              HeapConstantNoHole(factory()->empty_string()))
-
-DEFINE_GETTER(FixedArrayMapConstant, Map,
-              HeapConstantNoHole(factory()->fixed_array_map()))
-
-DEFINE_GETTER(PropertyArrayMapConstant, Map,
-              HeapConstantNoHole(factory()->property_array_map()))
-
-DEFINE_GETTER(FixedDoubleArrayMapConstant, Map,
-              HeapConstantNoHole(factory()->fixed_double_array_map()))
-
-DEFINE_GETTER(WeakFixedArrayMapConstant, Map,
-              HeapConstantNoHole(factory()->weak_fixed_array_map()))
-
-DEFINE_GETTER(HeapNumberMapConstant, Map,
-              HeapConstantNoHole(factory()->heap_number_map()))
-
-DEFINE_GETTER(UndefinedConstant, Undefined,
-              HeapConstantNoHole(factory()->undefined_value()))
-
-DEFINE_GETTER(TheHoleConstant, Hole,
-              HeapConstantHole(factory()->the_hole_value()))
-
-DEFINE_GETTER(PropertyCellHoleConstant, Hole,
-              HeapConstantHole(factory()->property_cell_hole_value()))
-
-DEFINE_GETTER(HashTableHoleConstant, Hole,
-              HeapConstantHole(factory()->hash_table_hole_value()))
-
-DEFINE_GETTER(PromiseHoleConstant, Hole,
-              HeapConstantHole(factory()->promise_hole_value()))
-
-DEFINE_GETTER(UninitializedConstant, Hole,
-              HeapConstantHole(factory()->uninitialized_value()))
-
-DEFINE_GETTER(OptimizedOutConstant, Hole,
-              HeapConstantHole(factory()->optimized_out()))
-
-DEFINE_GETTER(StaleRegisterConstant, Hole,
-              HeapConstantHole(factory()->stale_register()))
-
-DEFINE_GETTER(TrueConstant, True, HeapConstantNoHole(factory()->true_value()))
-
-DEFINE_GETTER(FalseConstant, False,
-              HeapConstantNoHole(factory()->false_value()))
-
-DEFINE_GETTER(NullConstant, Null, HeapConstantNoHole(factory()->null_value()))
-
-DEFINE_GETTER(ZeroConstant, Number, NumberConstant(0.0))
-
-DEFINE_GETTER(MinusZeroConstant, Number, NumberConstant(-0.0))
-
-DEFINE_GETTER(OneConstant, Number, NumberConstant(1.0))
-
-DEFINE_GETTER(MinusOneConstant, Number, NumberConstant(-1.0))
-
-DEFINE_GETTER(NaNConstant, Number,
-              NumberConstant(std::numeric_limits<double>::quiet_NaN()))
-
-DEFINE_GETTER(EmptyStateValues, UntaggedT,
-              graph()->NewNode(common()->StateValues(0,
-                                                     SparseInputMask::Dense())))
-
-DEFINE_GETTER(
-    SingleDeadTypedStateValues, UntaggedT,
-    graph()->NewNode(common()->TypedStateValues(
-        graph()->zone()->New<ZoneVector<MachineType>>(0, graph()->zone()),
-        SparseInputMask(SparseInputMask::kEndMarker << 1))))
-
-DEFINE_GETTER(ExternalObjectMapConstant, Map,
-              HeapConstantNoHole(factory()->external_map()))
-
-DEFINE_GETTER(ContextCellMapConstant, Map,
-              HeapConstantNoHole(factory()->context_cell_map()))
-
-#undef DEFINE_GETTER
-#undef GET_CACHED_FIELD
 
 }  // namespace compiler
 }  // namespace internal

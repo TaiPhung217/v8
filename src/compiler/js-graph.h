@@ -5,184 +5,147 @@
 #ifndef V8_COMPILER_JS_GRAPH_H_
 #define V8_COMPILER_JS_GRAPH_H_
 
-#include "src/common/globals.h"
+#include "src/compiler/common-node-cache.h"
 #include "src/compiler/common-operator.h"
-#include "src/compiler/js-heap-broker.h"
+#include "src/compiler/graph.h"
 #include "src/compiler/js-operator.h"
-#include "src/compiler/machine-graph.h"
-#include "src/compiler/turbofan-graph.h"
-#include "src/execution/isolate.h"
-#include "src/objects/oddball.h"
+#include "src/compiler/machine-operator.h"
+#include "src/compiler/node-properties.h"
 
 namespace v8 {
 namespace internal {
 namespace compiler {
 
-class SimplifiedOperatorBuilder;
 class Typer;
 
-// Implements a facade on a TFGraph, enhancing the graph with JS-specific
-// notions, including various builders for operators, canonicalized global
+// Implements a facade on a Graph, enhancing the graph with JS-specific
+// notions, including a builder for for JS* operators, canonicalized global
 // constants, and various helper methods.
-class V8_EXPORT_PRIVATE JSGraph : public MachineGraph {
+class JSGraph : public ZoneObject {
  public:
-  JSGraph(Isolate* isolate, TFGraph* graph, CommonOperatorBuilder* common,
-          JSOperatorBuilder* javascript, SimplifiedOperatorBuilder* simplified,
-          MachineOperatorBuilder* machine)
-      : MachineGraph(graph, common, machine),
-        isolate_(isolate),
+  JSGraph(Graph* graph, CommonOperatorBuilder* common,
+          JSOperatorBuilder* javascript, MachineOperatorBuilder* machine)
+      : graph_(graph),
+        common_(common),
         javascript_(javascript),
-        simplified_(simplified) {}
+        machine_(machine),
+        cache_(zone()) {}
 
-  JSGraph(const JSGraph&) = delete;
-  JSGraph& operator=(const JSGraph&) = delete;
+  // Canonicalized global constants.
+  Node* CEntryStubConstant(int result_size);
+  Node* UndefinedConstant();
+  Node* TheHoleConstant();
+  Node* TrueConstant();
+  Node* FalseConstant();
+  Node* NullConstant();
+  Node* ZeroConstant();
+  Node* OneConstant();
+  Node* NaNConstant();
 
-  // CEntryStubs are cached depending on the result size and other flags.
-  Node* CEntryStubConstant(int result_size,
-                           ArgvMode argv_mode = ArgvMode::kStack,
-                           bool builtin_exit_frame = false);
+  // Creates a HeapConstant node, possibly canonicalized, without inspecting the
+  // object.
+  Node* HeapConstant(Unique<HeapObject> value);
 
-  // Used for padding frames. (alias: the hole)
-  TNode<Hole> PaddingConstant() { return TheHoleConstant(); }
+  // Creates a HeapConstant node, possibly canonicalized, and may access the
+  // heap to inspect the object.
+  Node* HeapConstant(Handle<HeapObject> value);
 
-  // Used for stubs and runtime functions with no context. (alias: SMI zero)
-  TNode<Number> NoContextConstant() { return ZeroConstant(); }
-
-  // Creates a HeapConstant node, possibly canonicalized.
-  // Checks that we don't emit hole values. Use this if possible to emit
-  // JSReceiver heap constants.
-  Node* HeapConstantNoHole(Handle<HeapObject> value);
-
-  // Creates a HeapConstant node, possibly canonicalized.
-  // This can be used whenever we might need to emit a hole value or a
-  // JSReceiver. Use this cautiously only if you really need it.
-  Node* HeapConstantMaybeHole(Handle<HeapObject> value);
-
-  // Creates a HeapConstant node, possibly canonicalized.
-  // This is only used to emit hole values. Use this if you are sure that you
-  // only emit a Hole value.
-  Node* HeapConstantHole(Handle<HeapObject> value);
-
-  // Createas a TrustedHeapConstant node.
-  // This is similar to HeapConstant, but for constants that live in trusted
-  // space (having a different cage base) and therefore shouldn't be compressed.
-  Node* TrustedHeapConstant(Handle<HeapObject> value);
-
-  // Creates a Constant node of the appropriate type for
-  // the given object.  Inspect the (serialized) object and determine whether
-  // one of the canonicalized globals or a number constant should be returned.
-  // Checks that we do not emit a Hole value, use this whenever possible.
-  Node* ConstantNoHole(ObjectRef ref, JSHeapBroker* broker);
-  // Creates a Constant node of the appropriate type for
-  // the given object.  Inspect the (serialized) object and determine whether
-  // one of the canonicalized globals or a number constant should be returned.
-  // Use this if you really need to emit Hole values.
-  Node* ConstantMaybeHole(ObjectRef ref, JSHeapBroker* broker);
+  // Creates a Constant node of the appropriate type for the given object.
+  // Accesses the heap to inspect the object and determine whether one of the
+  // canonicalized globals or a number constant should be returned.
+  Node* Constant(Handle<Object> value);
 
   // Creates a NumberConstant node, usually canonicalized.
-  Node* ConstantMaybeHole(double value);
-  Node* ConstantMaybeHole(Float64 value);
-  // Same, but checks that we are not emitting a kHoleNanInt64, please use
-  // whenever you can.
-  Node* ConstantNoHole(double value);
-  Node* ConstantNoHole(Float64 value);
+  Node* Constant(double value);
 
-  // Creates a Constant node that holds a mutable Heap Number.
-  // This is different from ConstantNoHole, which reads the double value and
-  // creates a Constant node from it.
-  Node* ConstantMutableHeapNumber(HeapNumberRef ref, JSHeapBroker* broker);
+  // Creates a NumberConstant node, usually canonicalized.
+  Node* Constant(int32_t value);
+
+  // Creates a Int32Constant node, usually canonicalized.
+  Node* Int32Constant(int32_t value);
+  Node* Uint32Constant(uint32_t value) {
+    return Int32Constant(bit_cast<int32_t>(value));
+  }
 
   // Creates a HeapConstant node for either true or false.
-  TNode<Boolean> BooleanConstant(bool is_true) {
-    return is_true ? TNode<Boolean>(TrueConstant())
-                   : TNode<Boolean>(FalseConstant());
+  Node* BooleanConstant(bool is_true) {
+    return is_true ? TrueConstant() : FalseConstant();
   }
+
+  // Creates a Int64Constant node, usually canonicalized.
+  Node* Int64Constant(int64_t value);
+  Node* Uint64Constant(uint64_t value) {
+    return Int64Constant(bit_cast<int64_t>(value));
+  }
+
+  // Creates a Int32Constant/Int64Constant node, depending on the word size of
+  // the target machine.
+  // TODO(turbofan): Code using Int32Constant/Int64Constant to store pointer
+  // constants is probably not serializable.
+  Node* IntPtrConstant(intptr_t value) {
+    return machine()->Is32() ? Int32Constant(static_cast<int32_t>(value))
+                             : Int64Constant(static_cast<int64_t>(value));
+  }
+  template <typename T>
+  Node* PointerConstant(T* value) {
+    return IntPtrConstant(bit_cast<intptr_t>(value));
+  }
+
+  // Creates a Float32Constant node, usually canonicalized.
+  Node* Float32Constant(float value);
+
+  // Creates a Float64Constant node, usually canonicalized.
+  Node* Float64Constant(double value);
+
+  // Creates an ExternalConstant node, usually canonicalized.
+  Node* ExternalConstant(ExternalReference ref);
 
   Node* SmiConstant(int32_t immediate) {
     DCHECK(Smi::IsValid(immediate));
-    return ConstantMaybeHole(immediate);
+    return Constant(immediate);
   }
 
-  JSOperatorBuilder* javascript() const { return javascript_; }
-  SimplifiedOperatorBuilder* simplified() const { return simplified_; }
-  Isolate* isolate() const { return isolate_; }
-  Factory* factory() const { return isolate()->factory(); }
+  // Creates a dummy Constant node, used to satisfy calling conventions of
+  // stubs and runtime functions that do not require a context.
+  Node* NoContextConstant() { return ZeroConstant(); }
 
-  // Adds all the cached nodes to the given list.
+  JSOperatorBuilder* javascript() { return javascript_; }
+  CommonOperatorBuilder* common() { return common_; }
+  MachineOperatorBuilder* machine() { return machine_; }
+  Graph* graph() { return graph_; }
+  Zone* zone() { return graph()->zone(); }
+  Isolate* isolate() { return zone()->isolate(); }
+  Factory* factory() { return isolate()->factory(); }
+
   void GetCachedNodes(NodeVector* nodes);
 
-// Cached global nodes.
-#define CACHED_GLOBAL_LIST(V)                                 \
-  V(AllocateInYoungGenerationStubConstant, Code)              \
-  V(AllocateInOldGenerationStubConstant, Code)                \
-  IF_WASM(V, WasmAllocateInYoungGenerationStubConstant, Code) \
-  IF_WASM(V, WasmAllocateInOldGenerationStubConstant, Code)   \
-  V(ArrayConstructorStubConstant, Code)                       \
-  V(BigIntMapConstant, Map)                                   \
-  V(BooleanMapConstant, Map)                                  \
-  V(ToNumberBuiltinConstant, Code)                            \
-  V(PlainPrimitiveToNumberBuiltinConstant, Code)              \
-  V(EmptyFixedArrayConstant, FixedArray)                      \
-  V(EmptyStringConstant, String)                              \
-  V(FixedArrayMapConstant, Map)                               \
-  V(PropertyArrayMapConstant, Map)                            \
-  V(FixedDoubleArrayMapConstant, Map)                         \
-  V(WeakFixedArrayMapConstant, Map)                           \
-  V(HeapNumberMapConstant, Map)                               \
-  V(UndefinedConstant, Undefined)                             \
-  V(TheHoleConstant, Hole)                                    \
-  V(PropertyCellHoleConstant, Hole)                           \
-  V(HashTableHoleConstant, Hole)                              \
-  V(PromiseHoleConstant, Hole)                                \
-  V(UninitializedConstant, Hole)                              \
-  V(OptimizedOutConstant, Hole)                               \
-  V(StaleRegisterConstant, Hole)                              \
-  V(TrueConstant, True)                                       \
-  V(FalseConstant, False)                                     \
-  V(NullConstant, Null)                                       \
-  V(ZeroConstant, Number)                                     \
-  V(MinusZeroConstant, Number)                                \
-  V(OneConstant, Number)                                      \
-  V(MinusOneConstant, Number)                                 \
-  V(NaNConstant, Number)                                      \
-  V(EmptyStateValues, UntaggedT)                              \
-  V(SingleDeadTypedStateValues, UntaggedT)                    \
-  V(ExternalObjectMapConstant, Map)                           \
-  V(ContextCellMapConstant, Map)
-
-// Cached global node accessor methods.
-#define DECLARE_GETTER(name, Type) TNode<Type> name();
-  CACHED_GLOBAL_LIST(DECLARE_GETTER)
-#undef DECLARE_GETTER
-
  private:
-  Isolate* isolate_;
+  Graph* graph_;
+  CommonOperatorBuilder* common_;
   JSOperatorBuilder* javascript_;
-  SimplifiedOperatorBuilder* simplified_;
+  MachineOperatorBuilder* machine_;
 
-#define CACHED_CENTRY_LIST(V) \
-  V(CEntryStub1Constant)      \
-  V(CEntryStub2Constant)      \
-  V(CEntryStub3Constant)      \
-  V(CEntryStub1WithBuiltinExitFrameConstant)
+  // TODO(titzer): make this into a simple array.
+  SetOncePointer<Node> c_entry_stub_constant_;
+  SetOncePointer<Node> undefined_constant_;
+  SetOncePointer<Node> the_hole_constant_;
+  SetOncePointer<Node> true_constant_;
+  SetOncePointer<Node> false_constant_;
+  SetOncePointer<Node> null_constant_;
+  SetOncePointer<Node> zero_constant_;
+  SetOncePointer<Node> one_constant_;
+  SetOncePointer<Node> nan_constant_;
 
-// Canonicalized global node fields.
-#define DECLARE_FIELD(name, ...) Node* name##_ = nullptr;
-  CACHED_GLOBAL_LIST(DECLARE_FIELD)
-  CACHED_CENTRY_LIST(DECLARE_FIELD)
-#undef DECLARE_FIELD
+  CommonNodeCache cache_;
 
-  // Internal helper to canonicalize a number constant.
+  Node* ImmovableHeapConstant(Handle<HeapObject> value);
   Node* NumberConstant(double value);
 
-  // Internal helper that creates a Constant node of the appropriate type for
-  // the given object.  Inspect the (serialized) object and determine whether
-  // one of the canonicalized globals or a number constant should be returned.
-  Node* Constant(ObjectRef value, JSHeapBroker* broker);
+  DISALLOW_COPY_AND_ASSIGN(JSGraph);
 };
 
 }  // namespace compiler
 }  // namespace internal
 }  // namespace v8
 
-#endif  // V8_COMPILER_JS_GRAPH_H_
+#endif
