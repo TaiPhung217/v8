@@ -4,76 +4,188 @@
 
 #include "src/base/platform/mutex.h"
 
-#include "src/base/platform/platform.h"
+#include <errno.h>
 
 namespace v8 {
 namespace base {
 
-RecursiveMutex::~RecursiveMutex() {
-  DCHECK_EQ(0, level_);
+#if V8_OS_POSIX
+
+static V8_INLINE void InitializeNativeHandle(pthread_mutex_t* mutex) {
+  int result;
+#if defined(DEBUG)
+  // Use an error checking mutex in debug mode.
+  pthread_mutexattr_t attr;
+  result = pthread_mutexattr_init(&attr);
+  DCHECK_EQ(0, result);
+  result = pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_ERRORCHECK);
+  DCHECK_EQ(0, result);
+  result = pthread_mutex_init(mutex, &attr);
+  DCHECK_EQ(0, result);
+  result = pthread_mutexattr_destroy(&attr);
+#else
+  // Use a fast mutex (default attributes).
+  result = pthread_mutex_init(mutex, NULL);
+#endif  // defined(DEBUG)
+  DCHECK_EQ(0, result);
+  USE(result);
 }
 
-void RecursiveMutex::Lock() {
-  int own_id = v8::base::OS::GetCurrentThreadId();
-  if (thread_id_ == own_id) {
-    level_++;
-    return;
-  }
-  mutex_.Lock();
-  DCHECK_EQ(0, level_);
-  thread_id_ = own_id;
-  level_ = 1;
+
+static V8_INLINE void InitializeRecursiveNativeHandle(pthread_mutex_t* mutex) {
+  pthread_mutexattr_t attr;
+  int result = pthread_mutexattr_init(&attr);
+  DCHECK_EQ(0, result);
+  result = pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+  DCHECK_EQ(0, result);
+  result = pthread_mutex_init(mutex, &attr);
+  DCHECK_EQ(0, result);
+  result = pthread_mutexattr_destroy(&attr);
+  DCHECK_EQ(0, result);
+  USE(result);
 }
 
-void RecursiveMutex::Unlock() {
-#ifdef DEBUG
-  int own_id = v8::base::OS::GetCurrentThreadId();
-  CHECK_EQ(thread_id_, own_id);
-#endif
-  if ((--level_) == 0) {
-    thread_id_ = 0;
-    mutex_.Unlock();
-  }
+
+static V8_INLINE void DestroyNativeHandle(pthread_mutex_t* mutex) {
+  int result = pthread_mutex_destroy(mutex);
+  DCHECK_EQ(0, result);
+  USE(result);
 }
 
-bool RecursiveMutex::TryLock() {
-  int own_id = v8::base::OS::GetCurrentThreadId();
-  if (thread_id_ == own_id) {
-    level_++;
-    return true;
-  }
-  if (mutex_.TryLock()) {
-    DCHECK_EQ(0, level_);
-    thread_id_ = own_id;
-    level_ = 1;
-    return true;
-  }
-  return false;
+
+static V8_INLINE void LockNativeHandle(pthread_mutex_t* mutex) {
+  int result = pthread_mutex_lock(mutex);
+  DCHECK_EQ(0, result);
+  USE(result);
 }
+
+
+static V8_INLINE void UnlockNativeHandle(pthread_mutex_t* mutex) {
+  int result = pthread_mutex_unlock(mutex);
+  DCHECK_EQ(0, result);
+  USE(result);
+}
+
+
+static V8_INLINE bool TryLockNativeHandle(pthread_mutex_t* mutex) {
+  int result = pthread_mutex_trylock(mutex);
+  if (result == EBUSY) {
+    return false;
+  }
+  DCHECK_EQ(0, result);
+  return true;
+}
+
+#elif V8_OS_WIN
+
+static V8_INLINE void InitializeNativeHandle(PCRITICAL_SECTION cs) {
+  InitializeCriticalSection(cs);
+}
+
+
+static V8_INLINE void InitializeRecursiveNativeHandle(PCRITICAL_SECTION cs) {
+  InitializeCriticalSection(cs);
+}
+
+
+static V8_INLINE void DestroyNativeHandle(PCRITICAL_SECTION cs) {
+  DeleteCriticalSection(cs);
+}
+
+
+static V8_INLINE void LockNativeHandle(PCRITICAL_SECTION cs) {
+  EnterCriticalSection(cs);
+}
+
+
+static V8_INLINE void UnlockNativeHandle(PCRITICAL_SECTION cs) {
+  LeaveCriticalSection(cs);
+}
+
+
+static V8_INLINE bool TryLockNativeHandle(PCRITICAL_SECTION cs) {
+  return TryEnterCriticalSection(cs);
+}
+
+#endif  // V8_OS_POSIX
+
 
 Mutex::Mutex() {
+  InitializeNativeHandle(&native_handle_);
 #ifdef DEBUG
   level_ = 0;
 #endif
 }
 
-Mutex::~Mutex() { DCHECK_EQ(0, level_); }
 
-void Mutex::Lock() ABSL_NO_THREAD_SAFETY_ANALYSIS {
-  native_handle_.lock();
+Mutex::~Mutex() {
+  DestroyNativeHandle(&native_handle_);
+  DCHECK_EQ(0, level_);
+}
+
+
+void Mutex::Lock() {
+  LockNativeHandle(&native_handle_);
   AssertUnheldAndMark();
 }
 
-void Mutex::Unlock() ABSL_NO_THREAD_SAFETY_ANALYSIS {
+
+void Mutex::Unlock() {
   AssertHeldAndUnmark();
-  native_handle_.unlock();
+  UnlockNativeHandle(&native_handle_);
 }
 
-bool Mutex::TryLock() ABSL_NO_THREAD_SAFETY_ANALYSIS {
-  if (!native_handle_.try_lock()) return false;
+
+bool Mutex::TryLock() {
+  if (!TryLockNativeHandle(&native_handle_)) {
+    return false;
+  }
   AssertUnheldAndMark();
   return true;
 }
 
-}  // namespace base
-}  // namespace v8
+
+RecursiveMutex::RecursiveMutex() {
+  InitializeRecursiveNativeHandle(&native_handle_);
+#ifdef DEBUG
+  level_ = 0;
+#endif
+}
+
+
+RecursiveMutex::~RecursiveMutex() {
+  DestroyNativeHandle(&native_handle_);
+  DCHECK_EQ(0, level_);
+}
+
+
+void RecursiveMutex::Lock() {
+  LockNativeHandle(&native_handle_);
+#ifdef DEBUG
+  DCHECK_LE(0, level_);
+  level_++;
+#endif
+}
+
+
+void RecursiveMutex::Unlock() {
+#ifdef DEBUG
+  DCHECK_LT(0, level_);
+  level_--;
+#endif
+  UnlockNativeHandle(&native_handle_);
+}
+
+
+bool RecursiveMutex::TryLock() {
+  if (!TryLockNativeHandle(&native_handle_)) {
+    return false;
+  }
+#ifdef DEBUG
+  DCHECK_LE(0, level_);
+  level_++;
+#endif
+  return true;
+}
+
+} }  // namespace v8::base

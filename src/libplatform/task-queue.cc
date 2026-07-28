@@ -4,10 +4,7 @@
 
 #include "src/libplatform/task-queue.h"
 
-#include "include/v8-platform.h"
 #include "src/base/logging.h"
-#include "src/base/platform/platform.h"
-#include "src/base/platform/time.h"
 
 namespace v8 {
 namespace platform {
@@ -16,30 +13,32 @@ TaskQueue::TaskQueue() : process_queue_semaphore_(0), terminated_(false) {}
 
 
 TaskQueue::~TaskQueue() {
-  base::MutexGuard guard(&lock_);
+  base::LockGuard<base::Mutex> guard(&lock_);
   DCHECK(terminated_);
   DCHECK(task_queue_.empty());
 }
 
-void TaskQueue::Append(std::unique_ptr<Task> task) {
-  base::MutexGuard guard(&lock_);
+
+void TaskQueue::Append(Task* task) {
+  base::LockGuard<base::Mutex> guard(&lock_);
   DCHECK(!terminated_);
-  task_queue_.push(std::move(task));
+  task_queue_.push(task);
   process_queue_semaphore_.Signal();
 }
 
-std::unique_ptr<Task> TaskQueue::GetNext() {
+
+Task* TaskQueue::GetNext() {
   for (;;) {
     {
-      base::MutexGuard guard(&lock_);
+      base::LockGuard<base::Mutex> guard(&lock_);
       if (!task_queue_.empty()) {
-        std::unique_ptr<Task> result = std::move(task_queue_.front());
+        Task* result = task_queue_.front();
         task_queue_.pop();
         return result;
       }
       if (terminated_) {
         process_queue_semaphore_.Signal();
-        return nullptr;
+        return NULL;
       }
     }
     process_queue_semaphore_.Wait();
@@ -48,21 +47,10 @@ std::unique_ptr<Task> TaskQueue::GetNext() {
 
 
 void TaskQueue::Terminate() {
-  base::MutexGuard guard(&lock_);
+  base::LockGuard<base::Mutex> guard(&lock_);
   DCHECK(!terminated_);
   terminated_ = true;
   process_queue_semaphore_.Signal();
 }
 
-void TaskQueue::BlockUntilQueueEmptyForTesting() {
-  for (;;) {
-    {
-      base::MutexGuard guard(&lock_);
-      if (task_queue_.empty()) return;
-    }
-    base::OS::Sleep(base::TimeDelta::FromMilliseconds(5));
-  }
-}
-
-}  // namespace platform
-}  // namespace v8
+} }  // namespace v8::platform

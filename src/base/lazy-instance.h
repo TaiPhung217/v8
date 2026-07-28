@@ -2,9 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef V8_BASE_LAZY_INSTANCE_H_
-#define V8_BASE_LAZY_INSTANCE_H_
-
 // The LazyInstance<Type, Traits> class manages a single instance of Type,
 // which will be lazily created on the first time it's accessed.  This class is
 // useful for places you would normally use a function-level static, but you
@@ -38,7 +35,7 @@
 // providing your own trait:
 // Example usage:
 //   struct MyCreateTrait {
-//     static void Construct(void* allocated_ptr) {
+//     static void Construct(MyClass* allocated_ptr) {
 //       new (allocated_ptr) MyClass(/* extra parameters... */);
 //     }
 //   };
@@ -68,7 +65,8 @@
 //   The macro LAZY_DYNAMIC_INSTANCE_INITIALIZER must be used to initialize
 //   dynamic lazy instances.
 
-#include <type_traits>
+#ifndef V8_BASE_LAZY_INSTANCE_H_
+#define V8_BASE_LAZY_INSTANCE_H_
 
 #include "src/base/macros.h"
 #include "src/base/once.h"
@@ -94,8 +92,12 @@ struct LeakyInstanceTrait {
 
 template <typename T>
 struct StaticallyAllocatedInstanceTrait {
-  using StorageType = char[sizeof(T)];
-  using AlignmentType = T;
+  // 16-byte alignment fallback to be on the safe side here.
+  struct V8_ALIGNAS(T, 16) StorageType {
+    char x[sizeof(T)];
+  };
+
+  STATIC_ASSERT(V8_ALIGNOF(StorageType) >= V8_ALIGNOF(T));
 
   static T* MutableInstance(StorageType* storage) {
     return reinterpret_cast<T*>(storage);
@@ -103,15 +105,14 @@ struct StaticallyAllocatedInstanceTrait {
 
   template <typename ConstructTrait>
   static void InitStorageUsingTrait(StorageType* storage) {
-    ConstructTrait::Construct(storage);
+    ConstructTrait::Construct(MutableInstance(storage));
   }
 };
 
 
 template <typename T>
 struct DynamicallyAllocatedInstanceTrait {
-  using StorageType = T*;
-  using AlignmentType = T*;
+  typedef T* StorageType;
 
   static T* MutableInstance(StorageType* storage) {
     return *storage;
@@ -127,7 +128,9 @@ struct DynamicallyAllocatedInstanceTrait {
 template <typename T>
 struct DefaultConstructTrait {
   // Constructs the provided object which was already allocated.
-  static void Construct(void* allocated_ptr) { new (allocated_ptr) T(); }
+  static void Construct(T* allocated_ptr) {
+    new(allocated_ptr) T();
+  }
 };
 
 
@@ -164,17 +167,20 @@ template <typename T, typename AllocationTrait, typename CreateTrait,
           typename InitOnceTrait, typename DestroyTrait  /* not used yet. */>
 struct LazyInstanceImpl {
  public:
-  using StorageType = typename AllocationTrait::StorageType;
-  using AlignmentType = typename AllocationTrait::AlignmentType;
+  typedef typename AllocationTrait::StorageType StorageType;
 
  private:
-  static void InitInstance(void* storage) {
-    AllocationTrait::template InitStorageUsingTrait<CreateTrait>(
-        static_cast<StorageType*>(storage));
+  static void InitInstance(StorageType* storage) {
+    AllocationTrait::template InitStorageUsingTrait<CreateTrait>(storage);
   }
 
   void Init() const {
-    InitOnceTrait::Init(&once_, &InitInstance, static_cast<void*>(&storage_));
+    InitOnceTrait::Init(
+        &once_,
+        // Casts to void* are needed here to avoid breaking strict aliasing
+        // rules.
+        reinterpret_cast<void(*)(void*)>(&InitInstance),  // NOLINT
+        reinterpret_cast<void*>(&storage_));
   }
 
  public:
@@ -189,7 +195,10 @@ struct LazyInstanceImpl {
   }
 
   mutable OnceType once_;
-  alignas(AlignmentType) mutable StorageType storage_;
+  // Note that the previous field, OnceType, is an AtomicWord which guarantees
+  // 4-byte alignment of the storage field below. If compiling with GCC (>4.2),
+  // the LAZY_ALIGN macro above will guarantee correctness for any alignment.
+  mutable StorageType storage_;
 };
 
 
@@ -198,8 +207,8 @@ template <typename T,
           typename InitOnceTrait = ThreadSafeInitOnceTrait,
           typename DestroyTrait = LeakyInstanceTrait<T> >
 struct LazyStaticInstance {
-  using type = LazyInstanceImpl<T, StaticallyAllocatedInstanceTrait<T>,
-                                CreateTrait, InitOnceTrait, DestroyTrait>;
+  typedef LazyInstanceImpl<T, StaticallyAllocatedInstanceTrait<T>,
+      CreateTrait, InitOnceTrait, DestroyTrait> type;
 };
 
 
@@ -209,8 +218,8 @@ template <typename T,
           typename DestroyTrait = LeakyInstanceTrait<T> >
 struct LazyInstance {
   // A LazyInstance is a LazyStaticInstance.
-  using type = typename LazyStaticInstance<T, CreateTrait, InitOnceTrait,
-                                           DestroyTrait>::type;
+  typedef typename LazyStaticInstance<T, CreateTrait, InitOnceTrait,
+      DestroyTrait>::type type;
 };
 
 
@@ -219,39 +228,10 @@ template <typename T,
           typename InitOnceTrait = ThreadSafeInitOnceTrait,
           typename DestroyTrait = LeakyInstanceTrait<T> >
 struct LazyDynamicInstance {
-  using type = LazyInstanceImpl<T, DynamicallyAllocatedInstanceTrait<T>,
-                                CreateTrait, InitOnceTrait, DestroyTrait>;
+  typedef LazyInstanceImpl<T, DynamicallyAllocatedInstanceTrait<T>,
+      CreateTrait, InitOnceTrait, DestroyTrait> type;
 };
 
-// LeakyObject<T> wraps an object of type T, which is initialized in the
-// constructor but never destructed. Thus LeakyObject<T> is trivially
-// destructible and can be used in static (lazily initialized) variables.
-template <typename T>
-class LeakyObject {
- public:
-  template <typename... Args>
-  explicit LeakyObject(Args&&... args) {
-    new (storage_) T(std::forward<Args>(args)...);
-  }
-
-  LeakyObject(const LeakyObject&) = delete;
-  LeakyObject& operator=(const LeakyObject&) = delete;
-
-  T* get() { return reinterpret_cast<T*>(storage_); }
-
- private:
-  alignas(T) char storage_[sizeof(T)];
-};
-
-// Define a function which returns a pointer to a lazily initialized and never
-// destructed object of type T.
-#define DEFINE_LAZY_LEAKY_OBJECT_GETTER(T, FunctionName, ...) \
-  T* FunctionName() {                                         \
-    static ::v8::base::LeakyObject<T> object{__VA_ARGS__};    \
-    return object.get();                                      \
-  }
-
-}  // namespace base
-}  // namespace v8
+} }  // namespace v8::base
 
 #endif  // V8_BASE_LAZY_INSTANCE_H_
