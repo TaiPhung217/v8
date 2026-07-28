@@ -6,149 +6,67 @@
 #define V8_HEAP_MARK_COMPACT_INL_H_
 
 #include "src/heap/mark-compact.h"
-// Include the non-inl header before the rest of the headers.
+#include "src/isolate.h"
 
-#include "src/common/globals.h"
-#include "src/heap/heap-visitor-inl.h"
-#include "src/heap/marking-state-inl.h"
-#include "src/heap/marking-visitor-inl.h"
-#include "src/heap/marking-worklist-inl.h"
-#include "src/heap/marking.h"
-#include "src/heap/memory-chunk.h"
-#include "src/heap/normal-page.h"
-#include "src/heap/remembered-set-inl.h"
-#include "src/objects/js-collection-inl.h"
-#include "src/objects/transitions.h"
-#include "src/roots/roots.h"
 
 namespace v8 {
 namespace internal {
 
-void MarkCompactCollector::MarkObject(
-    Tagged<HeapObject> obj, MarkingHelper::WorklistTarget target_worklist) {
-  DCHECK(ReadOnlyHeap::Contains(obj) || heap_->Contains(obj));
-  MarkingHelper::TryMarkAndPush(heap_, local_marking_worklists_.get(),
-                                marking_state_, target_worklist, obj);
+
+MarkBit Marking::MarkBitFrom(Address addr) {
+  MemoryChunk* p = MemoryChunk::FromAddress(addr);
+  return p->markbits()->MarkBitFromIndex(p->AddressToMarkbitIndex(addr),
+                                         p->ContainsOnlyData());
 }
 
-void MarkCompactCollector::MarkRootObject(
-    Root root, Tagged<HeapObject> obj,
-    MarkingHelper::WorklistTarget target_worklist) {
-  DCHECK(ReadOnlyHeap::Contains(obj) || heap_->Contains(obj));
-  MarkingHelper::TryMarkAndPush(heap_, local_marking_worklists_.get(),
-                                marking_state_, target_worklist, obj);
-  if (V8_UNLIKELY(in_conservative_stack_scanning_)) {
-    DCHECK_EQ(root, Root::kStackRoots);
-    MemoryChunk* chunk = MemoryChunk::FromHeapObject(obj);
-    auto* page = SbxCast<MutablePage>(chunk->Metadata());
-    if (chunk->IsEvacuationCandidate()) {
-      DCHECK(!chunk->InYoungGeneration());
-      ReportAbortedEvacuationCandidateDueToFlags(SbxCast<NormalPage>(page));
-    } else if (chunk->InYoungGeneration() && !chunk->IsLargePage()) {
-      DCHECK(chunk->IsToPage());
-      if (!page->is_quarantined()) {
-        page->set_is_quarantined(true);
-      }
+
+void MarkCompactCollector::SetFlags(int flags) {
+  reduce_memory_footprint_ = ((flags & Heap::kReduceMemoryFootprintMask) != 0);
+  abort_incremental_marking_ =
+      ((flags & Heap::kAbortIncrementalMarkingMask) != 0);
+}
+
+
+void MarkCompactCollector::MarkObject(HeapObject* obj, MarkBit mark_bit) {
+  DCHECK(Marking::MarkBitFrom(obj) == mark_bit);
+  if (!mark_bit.Get()) {
+    mark_bit.Set();
+    MemoryChunk::IncrementLiveBytesFromGC(obj->address(), obj->Size());
+    DCHECK(IsMarked(obj));
+    DCHECK(obj->GetIsolate()->heap()->Contains(obj));
+    marking_deque_.PushBlack(obj);
+  }
+}
+
+
+void MarkCompactCollector::SetMark(HeapObject* obj, MarkBit mark_bit) {
+  DCHECK(!mark_bit.Get());
+  DCHECK(Marking::MarkBitFrom(obj) == mark_bit);
+  mark_bit.Set();
+  MemoryChunk::IncrementLiveBytesFromGC(obj->address(), obj->Size());
+}
+
+
+bool MarkCompactCollector::IsMarked(Object* obj) {
+  DCHECK(obj->IsHeapObject());
+  HeapObject* heap_object = HeapObject::cast(obj);
+  return Marking::MarkBitFrom(heap_object).Get();
+}
+
+
+void MarkCompactCollector::RecordSlot(Object** anchor_slot, Object** slot,
+                                      Object* object,
+                                      SlotsBuffer::AdditionMode mode) {
+  Page* object_page = Page::FromAddress(reinterpret_cast<Address>(object));
+  if (object_page->IsEvacuationCandidate() &&
+      !ShouldSkipEvacuationSlotRecording(anchor_slot)) {
+    if (!SlotsBuffer::AddTo(&slots_buffer_allocator_,
+                            object_page->slots_buffer_address(), slot, mode)) {
+      EvictEvacuationCandidate(object_page);
     }
   }
 }
-
-// static
-template <typename THeapObjectSlot, RecordYoungSlot kRecordYoung>
-void MarkCompactCollector::RecordSlot(Tagged<HeapObject> host,
-                                      THeapObjectSlot slot,
-                                      Tagged<HeapObject> value) {
-  MemoryChunk* host_chunk = MemoryChunk::FromHeapObject(host);
-  if (host_chunk->ShouldSkipEvacuationSlotRecording()) {
-    return;
-  }
-  RecordSlot<THeapObjectSlot, kRecordYoung>(host_chunk, slot, value);
 }
-
-// static
-template <typename THeapObjectSlot, RecordYoungSlot kRecordYoung>
-void MarkCompactCollector::RecordSlot(MemoryChunk* host_chunk,
-                                      THeapObjectSlot slot,
-                                      Tagged<HeapObject> value) {
-  const MemoryChunk* value_chunk = MemoryChunk::FromHeapObject(value);
-  if (!value_chunk->IsEvacuationCandidate() &&
-      (!static_cast<bool>(kRecordYoung) ||
-       !HeapLayout::InYoungGeneration(value_chunk, value))) {
-    return;
-  }
-
-  const auto* isolate = Isolate::Current();
-  MutablePage* host_page = SbxCast<MutablePage>(host_chunk->Metadata(isolate));
-  const MutablePage* value_page =
-      SbxCast<const MutablePage>(value_chunk->Metadata(isolate));
-
-  if (static_cast<bool>(kRecordYoung) &&
-      HeapLayout::InYoungGeneration(value_chunk, value)) {
-    RememberedSet<OLD_TO_NEW_BACKGROUND>::Insert<AccessMode::ATOMIC>(
-        host_page, host_chunk->Offset(slot.address()));
-  } else if (value_page->is_executable()) {
-    DCHECK(OutsideSandbox(value_chunk->address()));
-    RememberedSet<TRUSTED_TO_CODE>::Insert<AccessMode::ATOMIC>(
-        host_page, host_chunk->Offset(slot.address()));
-  } else if (host_page->is_trusted() && value_page->is_trusted()) {
-    DCHECK(OutsideSandbox(value_chunk->address()));
-    RememberedSet<TRUSTED_TO_TRUSTED>::Insert<AccessMode::ATOMIC>(
-        host_page, host_chunk->Offset(slot.address()));
-  } else if (V8_LIKELY(!value_page->is_writable_shared()) ||
-             host_page->heap()->isolate()->is_shared_space_isolate()) {
-    DCHECK_EQ(host_page->heap(), value_page->heap());
-    RememberedSet<OLD_TO_OLD>::Insert<AccessMode::ATOMIC>(
-        host_page, host_chunk->Offset(slot.address()));
-  } else {
-    // The only case that we do not record are local->shared references from
-    // client heaps, see the following DCHECKs.
-    DCHECK(!host_page->heap()->isolate()->is_shared_space_isolate());
-    DCHECK(value_page->heap()->isolate()->is_shared_space_isolate());
-    DCHECK(value_page->is_writable_shared());
-    DCHECK_EQ(value_page->is_writable_shared(),
-              value_chunk->InWritableSharedSpace());
-  }
-}
-
-void MarkCompactCollector::AddTransitionArray(Tagged<TransitionArray> array) {
-  local_weak_objects()->transition_arrays_local.Push(array);
-}
-
-// static
-bool MarkCompactCollector::IsOnEvacuationCandidate(Tagged<MaybeObject> obj) {
-  return MemoryChunk::FromAddress(obj.ptr())->IsEvacuationCandidate();
-}
-
-void RootMarkingVisitor::VisitRootPointer(Root root, const char* description,
-                                          FullObjectSlot p) {
-  DCHECK(!MapWord::IsPacked(p.Relaxed_Load().ptr()));
-  MarkObjectByPointer(root, p);
-}
-
-void RootMarkingVisitor::VisitRootPointers(Root root, const char* description,
-                                           FullObjectSlot start,
-                                           FullObjectSlot end) {
-  for (FullObjectSlot p = start; p < end; ++p) {
-    MarkObjectByPointer(root, p);
-  }
-}
-
-void RootMarkingVisitor::MarkObjectByPointer(Root root, FullObjectSlot p) {
-  Tagged<Object> object = *p;
-#ifdef V8_ENABLE_DIRECT_HANDLE
-  if (object.ptr() == kTaggedNullAddress) return;
-#endif
-  if (!IsHeapObject(object)) return;
-  Tagged<HeapObject> heap_object = Cast<HeapObject>(object);
-  const auto target_worklist =
-      MarkingHelper::ShouldMarkObject(collector_->heap(), heap_object);
-  if (!target_worklist) {
-    return;
-  }
-  collector_->MarkRootObject(root, heap_object, target_worklist.value());
-}
-
-}  // namespace internal
-}  // namespace v8
+}  // namespace v8::internal
 
 #endif  // V8_HEAP_MARK_COMPACT_INL_H_

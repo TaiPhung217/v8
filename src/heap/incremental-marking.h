@@ -5,208 +5,232 @@
 #ifndef V8_HEAP_INCREMENTAL_MARKING_H_
 #define V8_HEAP_INCREMENTAL_MARKING_H_
 
-#include <cstdint>
-#include <optional>
 
-#include "src/base/hashing.h"
-#include "src/base/logging.h"
-#include "src/base/platform/mutex.h"
-#include "src/base/platform/time.h"
-#include "src/common/globals.h"
-#include "src/heap/heap.h"
-#include "src/heap/incremental-marking-job.h"
+#include "src/execution.h"
 #include "src/heap/mark-compact.h"
-#include "src/heap/mutable-page.h"
-#include "src/tasks/cancelable-task.h"
+#include "src/objects.h"
 
 namespace v8 {
 namespace internal {
 
-class HeapObject;
-class MarkBit;
-class Map;
-class Object;
-class PagedSpace;
 
-// Describes in which context IncrementalMarking::Step() is used in. This
-// information is used when marking finishes and for marking progress
-// heuristics.
-enum class StepOrigin {
-  // The caller of Step() is not allowed to complete marking right away. A task
-  // is scheduled to complete the GC. When the task isn't
-  // run soon enough, the stack guard mechanism will be used.
-  kV8,
-
-  // The caller of Step() will complete marking by running the GC right
-  // afterwards.
-  kTask
-};
-
-constexpr const char* ToString(StepOrigin step_origin) {
-  switch (step_origin) {
-    case StepOrigin::kV8:
-      return "V8";
-    case StepOrigin::kTask:
-      return "task";
-  }
-  UNREACHABLE();
-}
-
-class V8_EXPORT_PRIVATE IncrementalMarking final {
+class IncrementalMarking {
  public:
-  IncrementalMarking(Heap* heap, WeakObjects* weak_objects);
+  enum State { STOPPED, SWEEPING, MARKING, COMPLETE };
 
-  IncrementalMarking(const IncrementalMarking&) = delete;
-  IncrementalMarking& operator=(const IncrementalMarking&) = delete;
+  enum CompletionAction { GC_VIA_STACK_GUARD, NO_GC_VIA_STACK_GUARD };
 
-  MarkingMode marking_mode() const { return marking_mode_; }
+  enum ForceMarkingAction { FORCE_MARKING, DO_NOT_FORCE_MARKING };
 
-  bool IsMinorMarking() const {
-    return marking_mode_ == MarkingMode::kMinorMarking;
-  }
-  bool IsMajorMarking() const {
-    return marking_mode_ == MarkingMode::kMajorMarking;
-  }
+  enum ForceCompletionAction { FORCE_COMPLETION, DO_NOT_FORCE_COMPLETION };
 
-  bool IsStopped() const { return !IsMarking(); }
-  bool IsMarking() const { return marking_mode_ != MarkingMode::kNoMarking; }
-  bool IsMajorMarkingComplete() const {
-    return IsMajorMarking() && ShouldFinalize();
+  explicit IncrementalMarking(Heap* heap);
+
+  static void Initialize();
+
+  State state() {
+    DCHECK(state_ == STOPPED || FLAG_incremental_marking);
+    return state_;
   }
 
-  bool MajorCollectionRequested() const {
-    return major_collection_requested_via_stack_guard_;
+  bool should_hurry() { return should_hurry_; }
+  void set_should_hurry(bool val) { should_hurry_ = val; }
+
+  inline bool IsStopped() { return state() == STOPPED; }
+
+  INLINE(bool IsMarking()) { return state() >= MARKING; }
+
+  inline bool IsMarkingIncomplete() { return state() == MARKING; }
+
+  inline bool IsComplete() { return state() == COMPLETE; }
+
+  bool WorthActivating();
+
+  bool ShouldActivate();
+
+  bool WasActivated();
+
+  enum CompactionFlag { ALLOW_COMPACTION, PREVENT_COMPACTION };
+
+  void Start(CompactionFlag flag = ALLOW_COMPACTION);
+
+  void Stop();
+
+  void PrepareForScavenge();
+
+  void UpdateMarkingDequeAfterScavenge();
+
+  void Hurry();
+
+  void Finalize();
+
+  void Abort();
+
+  void MarkingComplete(CompletionAction action);
+
+  void Epilogue();
+
+  // It's hard to know how much work the incremental marker should do to make
+  // progress in the face of the mutator creating new work for it.  We start
+  // of at a moderate rate of work and gradually increase the speed of the
+  // incremental marker until it completes.
+  // Do some marking every time this much memory has been allocated or that many
+  // heavy (color-checking) write barriers have been invoked.
+  static const intptr_t kAllocatedThreshold = 65536;
+  static const intptr_t kWriteBarriersInvokedThreshold = 32768;
+  // Start off by marking this many times more memory than has been allocated.
+  static const intptr_t kInitialMarkingSpeed = 1;
+  // But if we are promoting a lot of data we need to mark faster to keep up
+  // with the data that is entering the old space through promotion.
+  static const intptr_t kFastMarking = 3;
+  // After this many steps we increase the marking/allocating factor.
+  static const intptr_t kMarkingSpeedAccellerationInterval = 1024;
+  // This is how much we increase the marking/allocating factor by.
+  static const intptr_t kMarkingSpeedAccelleration = 2;
+  static const intptr_t kMaxMarkingSpeed = 1000;
+
+  // This is the upper bound for how many times we allow finalization of
+  // incremental marking to be postponed.
+  static const size_t kMaxIdleMarkingDelayCounter = 3;
+
+  void OldSpaceStep(intptr_t allocated);
+
+  intptr_t Step(intptr_t allocated, CompletionAction action,
+                ForceMarkingAction marking = DO_NOT_FORCE_MARKING,
+                ForceCompletionAction completion = FORCE_COMPLETION);
+
+  inline void RestartIfNotMarking() {
+    if (state_ == COMPLETE) {
+      state_ = MARKING;
+      if (FLAG_trace_incremental_marking) {
+        PrintF("[IncrementalMarking] Restarting (new grey objects)\n");
+      }
+    }
   }
 
-  // Checks whether incremental marking is safe to be started and whether it
-  // should be started.
-  bool CanAndShouldBeStarted() const;
-  void Start(GarbageCollector garbage_collector,
-             GarbageCollectionReason gc_reason, const char* reason);
-  // Returns true if incremental marking was running and false otherwise.
-  bool Stop();
+  static void RecordWriteFromCode(HeapObject* obj, Object** slot,
+                                  Isolate* isolate);
 
-  // Performs incremental marking step and finalizes marking if complete.
-  void AdvanceAndFinalizeIfComplete();
+  // Record a slot for compaction.  Returns false for objects that are
+  // guaranteed to be rescanned or not guaranteed to survive.
+  //
+  // No slots in white objects should be recorded, as some slots are typed and
+  // cannot be interpreted correctly if the underlying object does not survive
+  // the incremental cycle (stays white).
+  INLINE(bool BaseRecordWrite(HeapObject* obj, Object** slot, Object* value));
+  INLINE(void RecordWrite(HeapObject* obj, Object** slot, Object* value));
+  INLINE(void RecordWriteIntoCode(HeapObject* obj, RelocInfo* rinfo,
+                                  Object* value));
+  INLINE(void RecordWriteOfCodeEntry(JSFunction* host, Object** slot,
+                                     Code* value));
 
-  // Performs incremental marking step and finalizes marking if the stack guard
-  // was already armed. If marking is complete but the stack guard wasn't armed
-  // yet, a finalization task is scheduled.
-  void AdvanceAndFinalizeIfNecessary();
 
-  // Performs incremental marking step and schedules job for finalization if
-  // marking completes.
-  void AdvanceOnAllocation();
+  void RecordWriteSlow(HeapObject* obj, Object** slot, Object* value);
+  void RecordWriteIntoCodeSlow(HeapObject* obj, RelocInfo* rinfo,
+                               Object* value);
+  void RecordWriteOfCodeEntrySlow(JSFunction* host, Object** slot, Code* value);
+  void RecordCodeTargetPatch(Code* host, Address pc, HeapObject* value);
+  void RecordCodeTargetPatch(Address pc, HeapObject* value);
 
-  bool IsCompacting() { return IsMajorMarking() && is_compacting_; }
+  inline void RecordWrites(HeapObject* obj);
 
-  Heap* heap() const { return heap_; }
-  Isolate* isolate() const;
+  inline void BlackToGreyAndUnshift(HeapObject* obj, MarkBit mark_bit);
 
-  IncrementalMarkingJob* incremental_marking_job() const {
-    return incremental_marking_job_.get();
+  inline void WhiteToGreyAndPush(HeapObject* obj, MarkBit mark_bit);
+
+  inline void SetOldSpacePageFlags(MemoryChunk* chunk) {
+    SetOldSpacePageFlags(chunk, IsMarking(), IsCompacting());
   }
 
-  bool black_allocation() { return black_allocation_; }
-
-  bool IsBelowActivationThresholds() const;
-
-  void MarkBlackBackground(Tagged<HeapObject> obj, int object_size);
-
-  void MarkRootsForTesting();
-
-  // Performs incremental marking step for unit tests.
-  void AdvanceForTesting(v8::base::TimeDelta max_duration,
-                         size_t max_bytes_to_mark = SIZE_MAX);
-
-  uint64_t current_trace_id() const { return current_trace_id_.value(); }
-
-  std::shared_ptr<::heap::base::IncrementalMarkingSchedule> schedule() {
-    return schedule_;
+  inline void SetNewSpacePageFlags(NewSpacePage* chunk) {
+    SetNewSpacePageFlags(chunk, IsMarking());
   }
+
+  bool IsCompacting() { return IsMarking() && is_compacting_; }
+
+  void ActivateGeneratedStub(Code* stub);
+
+  void NotifyOfHighPromotionRate() {
+    if (IsMarking()) {
+      if (marking_speed_ < kFastMarking) {
+        if (FLAG_trace_gc) {
+          PrintPID(
+              "Increasing marking speed to %d "
+              "due to high promotion rate\n",
+              static_cast<int>(kFastMarking));
+        }
+        marking_speed_ = kFastMarking;
+      }
+    }
+  }
+
+  void EnterNoMarkingScope() { no_marking_scope_depth_++; }
+
+  void LeaveNoMarkingScope() { no_marking_scope_depth_--; }
+
+  void NotifyIncompleteScanOfObject(int unscanned_bytes) {
+    unscanned_bytes_of_large_object_ = unscanned_bytes;
+  }
+
+  void ClearIdleMarkingDelayCounter();
+
+  bool IsIdleMarkingDelayCounterLimitReached();
 
  private:
-  class Observer final : public AllocationObserver {
-   public:
-    Observer(IncrementalMarking* incremental_marking, intptr_t step_size);
-    ~Observer() override = default;
-    void Step(int bytes_allocated, Address, size_t) override;
+  int64_t SpaceLeftInOldSpace();
 
-   private:
-    IncrementalMarking* const incremental_marking_;
-  };
+  void SpeedUp();
 
-  void StartMarkingMajor();
-  void StartMarkingMinor();
+  void ResetStepCounters();
 
-  // Checks whether incremental marking is safe to be started.
-  bool CanBeStarted() const;
+  void StartMarking(CompactionFlag flag);
 
-  void StartBlackAllocation();
-  void FinishBlackAllocation();
+  void ActivateIncrementalWriteBarrier(PagedSpace* space);
+  static void ActivateIncrementalWriteBarrier(NewSpace* space);
+  void ActivateIncrementalWriteBarrier();
 
-  void StartPointerTableBlackAllocation();
-  void StopPointerTableBlackAllocation();
+  static void DeactivateIncrementalWriteBarrierForSpace(PagedSpace* space);
+  static void DeactivateIncrementalWriteBarrierForSpace(NewSpace* space);
+  void DeactivateIncrementalWriteBarrier();
 
-  void MarkRoots();
+  static void SetOldSpacePageFlags(MemoryChunk* chunk, bool is_marking,
+                                   bool is_compacting);
 
-  void PublishWriteBarrierWorklists();
+  static void SetNewSpacePageFlags(NewSpacePage* chunk, bool is_marking);
 
-  // Fetches marked byte counters from the concurrent marker.
-  void FetchBytesMarkedConcurrently();
-  size_t GetScheduledBytes(StepOrigin step_origin);
+  INLINE(void ProcessMarkingDeque());
 
-  bool ShouldFinalize() const;
+  INLINE(intptr_t ProcessMarkingDeque(intptr_t bytes_to_process));
 
-  bool ShouldWaitForTask();
-  bool TryInitializeTaskTimeout();
+  INLINE(void VisitObject(Map* map, HeapObject* obj, int size));
 
-  // Returns the actual used time and actually marked bytes.
-  std::pair<v8::base::TimeDelta, size_t> CppHeapStep(
-      v8::base::TimeDelta max_duration,
-      std::optional<size_t> marked_bytes_limit, StepOrigin step_origin);
+  void IncrementIdleMarkingDelayCounter();
 
-  void Step(v8::base::TimeDelta max_duration, size_t max_bytes_to_process,
-            StepOrigin step_origin);
+  Heap* heap_;
 
-  size_t OldGenerationSizeOfObjects() const;
+  State state_;
+  bool is_compacting_;
 
-  MarkingState* marking_state() { return marking_state_; }
-  MarkingWorklists::Local* local_marking_worklists() const {
-    return current_local_marking_worklists_;
-  }
+  int steps_count_;
+  int64_t old_generation_space_available_at_start_of_incremental_;
+  int64_t old_generation_space_used_at_start_of_incremental_;
+  int64_t bytes_rescanned_;
+  bool should_hurry_;
+  int marking_speed_;
+  intptr_t bytes_scanned_;
+  intptr_t allocated_;
+  intptr_t write_barriers_invoked_since_last_step_;
+  size_t idle_marking_delay_counter_;
 
-  Heap* const heap_;
-  MarkCompactCollector* const major_collector_;
-  MinorMarkSweepCollector* const minor_collector_;
-  WeakObjects* weak_objects_;
-  MarkingWorklists::Local* current_local_marking_worklists_ = nullptr;
-  MarkingState* const marking_state_;
-  v8::base::TimeTicks start_time_;
-  size_t main_thread_marked_bytes_ = 0;
-  // A sample of concurrent_marking()->TotalMarkedBytes() at the last
-  // incremental marking step.
-  size_t bytes_marked_concurrently_ = 0;
-  MarkingMode marking_mode_ = MarkingMode::kNoMarking;
+  int no_marking_scope_depth_;
 
-  bool is_compacting_ = false;
-  bool black_allocation_ = false;
-  bool completion_task_scheduled_ = false;
-  v8::base::TimeTicks completion_task_timeout_;
-  bool major_collection_requested_via_stack_guard_ = false;
-  std::unique_ptr<IncrementalMarkingJob> incremental_marking_job_;
-  Observer new_generation_observer_;
-  Observer old_generation_observer_;
-  base::Mutex background_live_bytes_mutex_;
-  std::unordered_map<MutablePage*, intptr_t, base::hash<MutablePage*>>
-      background_live_bytes_;
-  std::shared_ptr<::heap::base::IncrementalMarkingSchedule> schedule_;
-  std::optional<uint64_t> current_trace_id_;
+  int unscanned_bytes_of_large_object_;
 
-  friend class IncrementalMarkingJob;
+  bool was_activated_;
+
+  DISALLOW_IMPLICIT_CONSTRUCTORS(IncrementalMarking);
 };
-
-}  // namespace internal
-}  // namespace v8
+}
+}  // namespace v8::internal
 
 #endif  // V8_HEAP_INCREMENTAL_MARKING_H_
