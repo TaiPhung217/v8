@@ -2,151 +2,146 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "src/ic/stub-cache.h"
+#include "src/v8.h"
 
-#include "src/ast/ast.h"
 #include "src/base/bits.h"
-#include "src/heap/heap-inl.h"  // For InYoungGeneration().
-#include "src/ic/ic-inl.h"
-#include "src/logging/counters.h"
-#include "src/objects/tagged-value-inl.h"
+#include "src/ic/stub-cache.h"
+#include "src/type-info.h"
 
 namespace v8 {
 namespace internal {
 
-StubCache::StubCache(Isolate* isolate) : isolate_(isolate) {
-  // Ensure the nullptr (aka Smi::zero()) which StubCache::Get() returns
-  // when the entry is not found is not considered as a handler.
-  DCHECK(!IC::IsHandler(Tagged<MaybeObject>()));
-}
+
+StubCache::StubCache(Isolate* isolate) : isolate_(isolate) {}
+
 
 void StubCache::Initialize() {
-  DCHECK(base::bits::IsPowerOfTwo(kPrimaryTableSize));
-  DCHECK(base::bits::IsPowerOfTwo(kSecondaryTableSize));
+  DCHECK(base::bits::IsPowerOfTwo32(kPrimaryTableSize));
+  DCHECK(base::bits::IsPowerOfTwo32(kSecondaryTableSize));
   Clear();
 }
 
-// Hash algorithm for the primary table. This algorithm is replicated in
-// the AccessorAssembler.  Returns an index into the table that
-// is scaled by 1 << kCacheIndexShift.
-int StubCache::PrimaryOffset(Tagged<Name> name, Tagged<Map> map) {
-  // Compute the hash of the name (use entire hash field).
-  uint32_t field = name->RawHash();
-  DCHECK(Name::IsHashFieldComputed(field));
-  // Using only the low bits in 64-bit mode is unlikely to increase the
-  // risk of collision even if the heap is spread over an area larger than
-  // 4Gb (and not at all if it isn't).
-  uint32_t map_low32bits =
-      static_cast<uint32_t>(map.ptr() ^ (map.ptr() >> kPrimaryTableBits));
-  // Base the offset on a simple combination of name and map.
-  uint32_t key = map_low32bits + field;
-  return key & ((kPrimaryTableSize - 1) << kCacheIndexShift);
-}
 
-// Hash algorithm for the secondary table.  This algorithm is replicated in
-// assembler. This hash should be sufficiently different from the primary one
-// in order to avoid collisions for minified code with short names.
-// Returns an index into the table that is scaled by 1 << kCacheIndexShift.
-int StubCache::SecondaryOffset(Tagged<Name> name, Tagged<Map> old_map) {
-  uint32_t name_low32bits = static_cast<uint32_t>(name.ptr());
-  uint32_t map_low32bits = static_cast<uint32_t>(old_map.ptr());
-  uint32_t key = (map_low32bits + name_low32bits);
-  key = key + (key >> kSecondaryTableBits);
-  return key & ((kSecondaryTableSize - 1) << kCacheIndexShift);
-}
+static Code::Flags CommonStubCacheChecks(Name* name, Map* map,
+                                         Code::Flags flags) {
+  flags = Code::RemoveTypeAndHolderFromFlags(flags);
 
-int StubCache::PrimaryOffsetForTesting(Tagged<Name> name, Tagged<Map> map) {
-  return PrimaryOffset(name, map);
-}
-
-int StubCache::SecondaryOffsetForTesting(Tagged<Name> name, Tagged<Map> map) {
-  return SecondaryOffset(name, map);
-}
-
-#ifdef DEBUG
-namespace {
-
-bool CommonStubCacheChecks(StubCache* stub_cache, Tagged<Name> name,
-                           Tagged<Map> map, Tagged<MaybeObject> handler) {
-  // Validate that the name and handler do not move on scavenge, and that we
+  // Validate that the name does not move on scavenge, and that we
   // can use identity checks instead of structural equality checks.
-  DCHECK(!HeapLayout::InYoungGeneration(name));
-  DCHECK(!HeapLayout::InYoungGeneration(handler));
-#ifdef V8_COMPRESS_POINTERS
-  // If the handler is a heap object, it is expected to live in the regular
-  // cage, not the code cage. No cage information is stored in the cache and
-  // StubCache::Get() assumes that this is true.
-  DCHECK(handler.IsSmi() || handler.IsInMainCageBase());
-#endif  // V8_COMPRESS_POINTERS
-  DCHECK(IsUniqueName(name));
-  if (handler.ptr() != kNullAddress) DCHECK(IC::IsHandler(handler));
-  return true;
+  DCHECK(!name->GetHeap()->InNewSpace(name));
+  DCHECK(name->IsUniqueName());
+
+  // The state bits are not important to the hash function because the stub
+  // cache only contains handlers. Make sure that the bits are the least
+  // significant so they will be the ones masked out.
+  DCHECK_EQ(Code::HANDLER, Code::ExtractKindFromFlags(flags));
+  STATIC_ASSERT((Code::ICStateField::kMask & 1) == 1);
+
+  // Make sure that the code type and cache holder are not included in the hash.
+  DCHECK(Code::ExtractTypeFromFlags(flags) == 0);
+  DCHECK(Code::ExtractCacheHolderFromFlags(flags) == 0);
+
+  return flags;
 }
 
-}  // namespace
-#endif
 
-void StubCache::Set(Tagged<Name> name, Tagged<Map> map,
-                    Tagged<MaybeObject> handler) {
-  DCHECK(CommonStubCacheChecks(this, name, map, handler));
+Code* StubCache::Set(Name* name, Map* map, Code* code) {
+  Code::Flags flags = CommonStubCacheChecks(name, map, code->flags());
 
   // Compute the primary entry.
-  int primary_offset = PrimaryOffset(name, map);
+  int primary_offset = PrimaryOffset(name, flags, map);
   Entry* primary = entry(primary_, primary_offset);
-  Tagged<MaybeObject> old_handler(
-      TaggedValue::ToMaybeObject(isolate(), primary->value));
+  Code* old_code = primary->value;
+
   // If the primary entry has useful data in it, we retire it to the
   // secondary cache before overwriting it.
-  // We need SafeEquals here while Builtin Code objects still live in the RO
-  // space inside the sandbox.
-  static_assert(!kAllCodeObjectsLiveInTrustedSpace);
-  if (!old_handler.SafeEquals(isolate()->builtins()->code(Builtin::kIllegal)) &&
-      !primary->map.IsSmi()) {
-    Tagged<Map> old_map =
-        Cast<Map>(StrongTaggedValue::ToObject(isolate(), primary->map));
-    Tagged<Name> old_name =
-        Cast<Name>(StrongTaggedValue::ToObject(isolate(), primary->key));
-    int secondary_offset = SecondaryOffset(old_name, old_map);
+  if (old_code != isolate_->builtins()->builtin(Builtins::kIllegal)) {
+    Map* old_map = primary->map;
+    Code::Flags old_flags =
+        Code::RemoveTypeAndHolderFromFlags(old_code->flags());
+    int seed = PrimaryOffset(primary->key, old_flags, old_map);
+    int secondary_offset = SecondaryOffset(primary->key, old_flags, seed);
     Entry* secondary = entry(secondary_, secondary_offset);
     *secondary = *primary;
   }
 
   // Update primary cache.
-  primary->key = StrongTaggedValue(name);
-  primary->value = TaggedValue(handler);
-  primary->map = StrongTaggedValue(map);
+  primary->key = name;
+  primary->value = code;
+  primary->map = map;
   isolate()->counters()->megamorphic_stub_cache_updates()->Increment();
+  return code;
 }
 
-Tagged<MaybeObject> StubCache::Get(Tagged<Name> name, Tagged<Map> map) {
-  DCHECK(CommonStubCacheChecks(this, name, map, Tagged<MaybeObject>()));
-  int primary_offset = PrimaryOffset(name, map);
+
+Code* StubCache::Get(Name* name, Map* map, Code::Flags flags) {
+  flags = CommonStubCacheChecks(name, map, flags);
+  int primary_offset = PrimaryOffset(name, flags, map);
   Entry* primary = entry(primary_, primary_offset);
   if (primary->key == name && primary->map == map) {
-    return TaggedValue::ToMaybeObject(isolate(), primary->value);
+    return primary->value;
   }
-  int secondary_offset = SecondaryOffset(name, map);
+  int secondary_offset = SecondaryOffset(name, flags, primary_offset);
   Entry* secondary = entry(secondary_, secondary_offset);
   if (secondary->key == name && secondary->map == map) {
-    return TaggedValue::ToMaybeObject(isolate(), secondary->value);
+    return secondary->value;
   }
-  return Tagged<MaybeObject>();
+  return NULL;
 }
+
 
 void StubCache::Clear() {
-  Tagged<MaybeObject> empty = isolate_->builtins()->code(Builtin::kIllegal);
-  Tagged<Name> empty_string = ReadOnlyRoots(isolate()).empty_string();
+  Code* empty = isolate_->builtins()->builtin(Builtins::kIllegal);
   for (int i = 0; i < kPrimaryTableSize; i++) {
-    primary_[i].key = StrongTaggedValue(empty_string);
-    primary_[i].map = StrongTaggedValue(Smi::zero());
-    primary_[i].value = TaggedValue(empty);
+    primary_[i].key = isolate()->heap()->empty_string();
+    primary_[i].map = NULL;
+    primary_[i].value = empty;
   }
   for (int j = 0; j < kSecondaryTableSize; j++) {
-    secondary_[j].key = StrongTaggedValue(empty_string);
-    secondary_[j].map = StrongTaggedValue(Smi::zero());
-    secondary_[j].value = TaggedValue(empty);
+    secondary_[j].key = isolate()->heap()->empty_string();
+    secondary_[j].map = NULL;
+    secondary_[j].value = empty;
   }
 }
 
-}  // namespace internal
-}  // namespace v8
+
+void StubCache::CollectMatchingMaps(SmallMapList* types, Handle<Name> name,
+                                    Code::Flags flags,
+                                    Handle<Context> native_context,
+                                    Zone* zone) {
+  for (int i = 0; i < kPrimaryTableSize; i++) {
+    if (primary_[i].key == *name) {
+      Map* map = primary_[i].map;
+      // Map can be NULL, if the stub is constant function call
+      // with a primitive receiver.
+      if (map == NULL) continue;
+
+      int offset = PrimaryOffset(*name, flags, map);
+      if (entry(primary_, offset) == &primary_[i] &&
+          !TypeFeedbackOracle::CanRetainOtherContext(map, *native_context)) {
+        types->AddMapIfMissing(Handle<Map>(map), zone);
+      }
+    }
+  }
+
+  for (int i = 0; i < kSecondaryTableSize; i++) {
+    if (secondary_[i].key == *name) {
+      Map* map = secondary_[i].map;
+      // Map can be NULL, if the stub is constant function call
+      // with a primitive receiver.
+      if (map == NULL) continue;
+
+      // Lookup in primary table and skip duplicates.
+      int primary_offset = PrimaryOffset(*name, flags, map);
+
+      // Lookup in secondary table and add matches.
+      int offset = SecondaryOffset(*name, flags, primary_offset);
+      if (entry(secondary_, offset) == &secondary_[i] &&
+          !TypeFeedbackOracle::CanRetainOtherContext(map, *native_context)) {
+        types->AddMapIfMissing(Handle<Map>(map), zone);
+      }
+    }
+  }
+}
+}
+}  // namespace v8::internal
