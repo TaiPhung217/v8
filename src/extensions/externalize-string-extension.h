@@ -5,35 +5,24 @@
 #ifndef V8_EXTENSIONS_EXTERNALIZE_STRING_EXTENSION_H_
 #define V8_EXTENSIONS_EXTERNALIZE_STRING_EXTENSION_H_
 
-#include "include/v8-extension.h"
+#include "src/v8.h"
 
 namespace v8 {
-
-template <typename T>
-class FunctionCallbackInfo;
-
 namespace internal {
 
 class ExternalizeStringExtension : public v8::Extension {
  public:
-  ExternalizeStringExtension()
-      : v8::Extension("v8/externalize", BuildSource(buffer_, sizeof(buffer_))) {
-  }
-  v8::Local<v8::FunctionTemplate> GetNativeFunctionTemplate(
-      v8::Isolate* isolate, v8::Local<v8::String> name) override;
-  static void Externalize(const v8::FunctionCallbackInfo<v8::Value>& info);
-  static void CreateExternalizableString(
-      const v8::FunctionCallbackInfo<v8::Value>& info);
-  static void CreateExternalizableTwoByteString(
-      const v8::FunctionCallbackInfo<v8::Value>& info);
-  static void IsOneByte(const v8::FunctionCallbackInfo<v8::Value>& info);
+  ExternalizeStringExtension() : v8::Extension("v8/externalize", kSource) {}
+  virtual v8::Handle<v8::FunctionTemplate> GetNativeFunctionTemplate(
+      v8::Isolate* isolate,
+      v8::Handle<v8::String> name);
+  static void Externalize(const v8::FunctionCallbackInfo<v8::Value>& args);
+  static void IsOneByte(const v8::FunctionCallbackInfo<v8::Value>& args);
 
  private:
-  static const char* BuildSource(char* buf, size_t size);
-  char buffer_[400];
+  static const char* const kSource;
 };
 
-}  // namespace internal
-}  // namespace v8
+} }  // namespace v8::internal
 
 #endif  // V8_EXTENSIONS_EXTERNALIZE_STRING_EXTENSION_H_
