@@ -5,11 +5,13 @@
 #ifndef V8_LIBPLATFORM_TASK_QUEUE_H_
 #define V8_LIBPLATFORM_TASK_QUEUE_H_
 
+#include <memory>
 #include <queue>
 
-#include "src/base/macros.h"
+#include "include/libplatform/libplatform-export.h"
 #include "src/base/platform/mutex.h"
 #include "src/base/platform/semaphore.h"
+#include "testing/gtest/include/gtest/gtest_prod.h"  // nogncheck
 
 namespace v8 {
 
@@ -17,31 +19,37 @@ class Task;
 
 namespace platform {
 
-class TaskQueue {
+class V8_PLATFORM_EXPORT TaskQueue {
  public:
   TaskQueue();
   ~TaskQueue();
 
+  TaskQueue(const TaskQueue&) = delete;
+  TaskQueue& operator=(const TaskQueue&) = delete;
+
   // Appends a task to the queue. The queue takes ownership of |task|.
-  void Append(Task* task);
+  void Append(std::unique_ptr<Task> task);
 
   // Returns the next task to process. Blocks if no task is available. Returns
-  // NULL if the queue is terminated.
-  Task* GetNext();
+  // nullptr if the queue is terminated.
+  std::unique_ptr<Task> GetNext();
 
   // Terminate the queue.
   void Terminate();
 
  private:
-  base::Mutex lock_;
-  base::Semaphore process_queue_semaphore_;
-  std::queue<Task*> task_queue_;
-  bool terminated_;
+  FRIEND_TEST(WorkerThreadTest, PostSingleTask);
 
-  DISALLOW_COPY_AND_ASSIGN(TaskQueue);
+  void BlockUntilQueueEmptyForTesting();
+
+  base::Semaphore process_queue_semaphore_;
+  base::Mutex lock_;
+  std::queue<std::unique_ptr<Task>> task_queue_;
+  bool terminated_;
 };
 
-} }  // namespace v8::platform
+}  // namespace platform
+}  // namespace v8
 
 
 #endif  // V8_LIBPLATFORM_TASK_QUEUE_H_

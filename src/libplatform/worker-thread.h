@@ -7,7 +7,8 @@
 
 #include <queue>
 
-#include "src/base/macros.h"
+#include "include/libplatform/libplatform-export.h"
+#include "src/base/compiler-specific.h"
 #include "src/base/platform/platform.h"
 
 namespace v8 {
@@ -16,23 +17,23 @@ namespace platform {
 
 class TaskQueue;
 
-class WorkerThread : public base::Thread {
+class V8_PLATFORM_EXPORT WorkerThread : public NON_EXPORTED_BASE(base::Thread) {
  public:
   explicit WorkerThread(TaskQueue* queue);
-  virtual ~WorkerThread();
+  ~WorkerThread() override;
+
+  WorkerThread(const WorkerThread&) = delete;
+  WorkerThread& operator=(const WorkerThread&) = delete;
 
   // Thread implementation.
-  void Run() OVERRIDE;
+  void Run() override;
 
  private:
-  friend class QuitTask;
-
   TaskQueue* queue_;
-
-  DISALLOW_COPY_AND_ASSIGN(WorkerThread);
 };
 
-} }  // namespace v8::platform
+}  // namespace platform
+}  // namespace v8
 
 
 #endif  // V8_LIBPLATFORM_WORKER_THREAD_H_

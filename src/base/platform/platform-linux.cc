@@ -5,262 +5,60 @@
 // Platform-specific code for Linux goes here. For the POSIX-compatible
 // parts, the implementation is in platform-posix.cc.
 
+#include "src/base/platform/platform-linux.h"
+
 #include <pthread.h>
 #include <semaphore.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/prctl.h>
 #include <sys/resource.h>
+#include <sys/syscall.h>
 #include <sys/time.h>
 
 // Ubuntu Dapper requires memory pages to be marked as
 // executable. Otherwise, OS raises an exception when executing code
 // in that page.
 #include <errno.h>
-#include <fcntl.h>      // open
+#include <fcntl.h>  // open
 #include <stdarg.h>
-#include <strings.h>    // index
-#include <sys/mman.h>   // mmap & munmap
-#include <sys/stat.h>   // open
-#include <sys/types.h>  // mmap & munmap
-#include <unistd.h>     // sysconf
-
-// GLibc on ARM defines mcontext_t has a typedef for 'struct sigcontext'.
-// Old versions of the C library <signal.h> didn't define the type.
-#if defined(__ANDROID__) && !defined(__BIONIC_HAVE_UCONTEXT_T) && \
-    (defined(__arm__) || defined(__aarch64__)) && \
-    !defined(__BIONIC_HAVE_STRUCT_SIGCONTEXT)
-#include <asm/sigcontext.h>  // NOLINT
-#endif
-
-#if defined(LEAK_SANITIZER)
-#include <sanitizer/lsan_interface.h>
-#endif
+#include <string.h>
+#include <strings.h>   // index
+#include <sys/mman.h>  // mmap & munmap & mremap
+#include <sys/stat.h>  // open
+#include <sys/sysmacros.h>
+#include <sys/types.h>    // mmap & munmap
+#include <sys/utsname.h>  // uname
+#include <unistd.h>       // sysconf
 
 #include <cmath>
+#include <cstdio>
+#include <memory>
+#include <optional>
+
+#include "src/base/logging.h"
+#include "src/base/memory.h"
 
 #undef MAP_TYPE
 
 #include "src/base/macros.h"
+#include "src/base/platform/platform-posix-time.h"
+#include "src/base/platform/platform-posix.h"
 #include "src/base/platform/platform.h"
 
-#if V8_OS_NACL
-#if !defined(MAP_NORESERVE)
-// PNaCL doesn't have this, so we always grab all of the memory, which is bad.
-#define MAP_NORESERVE 0
-#endif
-#else
-#include <sys/prctl.h>
-#include <sys/syscall.h>
+#if !defined(MREMAP_DONTUNMAP)
+// We define this to support building against versions that do not yet expose
+// it. Instead, we check at runtime in KernelSupportsRemapDontUnmap.
+#define MREMAP_DONTUNMAP 4
 #endif
 
 namespace v8 {
 namespace base {
 
-
-#ifdef __arm__
-
-bool OS::ArmUsingHardFloat() {
-  // GCC versions 4.6 and above define __ARM_PCS or __ARM_PCS_VFP to specify
-  // the Floating Point ABI used (PCS stands for Procedure Call Standard).
-  // We use these as well as a couple of other defines to statically determine
-  // what FP ABI used.
-  // GCC versions 4.4 and below don't support hard-fp.
-  // GCC versions 4.5 may support hard-fp without defining __ARM_PCS or
-  // __ARM_PCS_VFP.
-
-#define GCC_VERSION (__GNUC__ * 10000                                          \
-                     + __GNUC_MINOR__ * 100                                    \
-                     + __GNUC_PATCHLEVEL__)
-#if GCC_VERSION >= 40600
-#if defined(__ARM_PCS_VFP)
-  return true;
-#else
-  return false;
-#endif
-
-#elif GCC_VERSION < 40500
-  return false;
-
-#else
-#if defined(__ARM_PCS_VFP)
-  return true;
-#elif defined(__ARM_PCS) || defined(__SOFTFP__) || defined(__SOFTFP) || \
-      !defined(__VFP_FP__)
-  return false;
-#else
-#error "Your version of GCC does not report the FP ABI compiled for."          \
-       "Please report it on this issue"                                        \
-       "http://code.google.com/p/v8/issues/detail?id=2140"
-
-#endif
-#endif
-#undef GCC_VERSION
+TimezoneCache* OS::CreateTimezoneCache() {
+  return new PosixDefaultTimezoneCache();
 }
-
-#endif  // def __arm__
-
-
-const char* OS::LocalTimezone(double time, TimezoneCache* cache) {
-#if V8_OS_NACL
-  // Missing support for tm_zone field.
-  return "";
-#else
-  if (std::isnan(time)) return "";
-  time_t tv = static_cast<time_t>(std::floor(time/msPerSecond));
-  struct tm* t = localtime(&tv);
-  if (!t || !t->tm_zone) return "";
-  return t->tm_zone;
-#endif
-}
-
-
-double OS::LocalTimeOffset(TimezoneCache* cache) {
-#if V8_OS_NACL
-  // Missing support for tm_zone field.
-  return 0;
-#else
-  time_t tv = time(NULL);
-  struct tm* t = localtime(&tv);
-  // tm_gmtoff includes any daylight savings offset, so subtract it.
-  return static_cast<double>(t->tm_gmtoff * msPerSecond -
-                             (t->tm_isdst > 0 ? 3600 * msPerSecond : 0));
-#endif
-}
-
-
-void* OS::Allocate(const size_t requested,
-                   size_t* allocated,
-                   bool is_executable) {
-  const size_t msize = RoundUp(requested, AllocateAlignment());
-  int prot = PROT_READ | PROT_WRITE | (is_executable ? PROT_EXEC : 0);
-  void* addr = OS::GetRandomMmapAddr();
-  void* mbase = mmap(addr, msize, prot, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-  if (mbase == MAP_FAILED) return NULL;
-  *allocated = msize;
-  return mbase;
-}
-
-
-class PosixMemoryMappedFile : public OS::MemoryMappedFile {
- public:
-  PosixMemoryMappedFile(FILE* file, void* memory, int size)
-    : file_(file), memory_(memory), size_(size) { }
-  virtual ~PosixMemoryMappedFile();
-  virtual void* memory() { return memory_; }
-  virtual int size() { return size_; }
- private:
-  FILE* file_;
-  void* memory_;
-  int size_;
-};
-
-
-OS::MemoryMappedFile* OS::MemoryMappedFile::open(const char* name) {
-  FILE* file = fopen(name, "r+");
-  if (file == NULL) return NULL;
-
-  fseek(file, 0, SEEK_END);
-  int size = ftell(file);
-
-  void* memory =
-      mmap(OS::GetRandomMmapAddr(),
-           size,
-           PROT_READ | PROT_WRITE,
-           MAP_SHARED,
-           fileno(file),
-           0);
-  return new PosixMemoryMappedFile(file, memory, size);
-}
-
-
-OS::MemoryMappedFile* OS::MemoryMappedFile::create(const char* name, int size,
-    void* initial) {
-  FILE* file = fopen(name, "w+");
-  if (file == NULL) return NULL;
-  int result = fwrite(initial, size, 1, file);
-  if (result < 1) {
-    fclose(file);
-    return NULL;
-  }
-  void* memory =
-      mmap(OS::GetRandomMmapAddr(),
-           size,
-           PROT_READ | PROT_WRITE,
-           MAP_SHARED,
-           fileno(file),
-           0);
-  return new PosixMemoryMappedFile(file, memory, size);
-}
-
-
-PosixMemoryMappedFile::~PosixMemoryMappedFile() {
-  if (memory_) OS::Free(memory_, size_);
-  fclose(file_);
-}
-
-
-std::vector<OS::SharedLibraryAddress> OS::GetSharedLibraryAddresses() {
-  std::vector<SharedLibraryAddress> result;
-  // This function assumes that the layout of the file is as follows:
-  // hex_start_addr-hex_end_addr rwxp <unused data> [binary_file_name]
-  // If we encounter an unexpected situation we abort scanning further entries.
-  FILE* fp = fopen("/proc/self/maps", "r");
-  if (fp == NULL) return result;
-
-  // Allocate enough room to be able to store a full file name.
-  const int kLibNameLen = FILENAME_MAX + 1;
-  char* lib_name = reinterpret_cast<char*>(malloc(kLibNameLen));
-
-  // This loop will terminate once the scanning hits an EOF.
-  while (true) {
-    uintptr_t start, end;
-    char attr_r, attr_w, attr_x, attr_p;
-    // Parse the addresses and permission bits at the beginning of the line.
-    if (fscanf(fp, "%" V8PRIxPTR "-%" V8PRIxPTR, &start, &end) != 2) break;
-    if (fscanf(fp, " %c%c%c%c", &attr_r, &attr_w, &attr_x, &attr_p) != 4) break;
-
-    int c;
-    if (attr_r == 'r' && attr_w != 'w' && attr_x == 'x') {
-      // Found a read-only executable entry. Skip characters until we reach
-      // the beginning of the filename or the end of the line.
-      do {
-        c = getc(fp);
-      } while ((c != EOF) && (c != '\n') && (c != '/') && (c != '['));
-      if (c == EOF) break;  // EOF: Was unexpected, just exit.
-
-      // Process the filename if found.
-      if ((c == '/') || (c == '[')) {
-        // Push the '/' or '[' back into the stream to be read below.
-        ungetc(c, fp);
-
-        // Read to the end of the line. Exit if the read fails.
-        if (fgets(lib_name, kLibNameLen, fp) == NULL) break;
-
-        // Drop the newline character read by fgets. We do not need to check
-        // for a zero-length string because we know that we at least read the
-        // '/' or '[' character.
-        lib_name[strlen(lib_name) - 1] = '\0';
-      } else {
-        // No library name found, just record the raw address range.
-        snprintf(lib_name, kLibNameLen,
-                 "%08" V8PRIxPTR "-%08" V8PRIxPTR, start, end);
-      }
-      result.push_back(SharedLibraryAddress(lib_name, start, end));
-    } else {
-      // Entry not describing executable data. Skip to end of line to set up
-      // reading the next entry.
-      do {
-        c = getc(fp);
-      } while ((c != EOF) && (c != '\n'));
-      if (c == EOF) break;
-    }
-  }
-  free(lib_name);
-  fclose(fp);
-  return result;
-}
-
 
 void OS::SignalCodeMovingGC() {
   // Support for ll_prof.py.
@@ -271,176 +69,366 @@ void OS::SignalCodeMovingGC() {
   // it. This injects a GC marker into the stream of events generated
   // by the kernel and allows us to synchronize V8 code log and the
   // kernel log.
-  int size = sysconf(_SC_PAGESIZE);
+  long size = sysconf(_SC_PAGESIZE);  // NOLINT(runtime/int)
   FILE* f = fopen(OS::GetGCFakeMMapFile(), "w+");
-  if (f == NULL) {
-    OS::PrintError("Failed to open %s\n", OS::GetGCFakeMMapFile());
-    OS::Abort();
+  if (f == nullptr) {
+    FATAL("Failed to open %s: %s", OS::GetGCFakeMMapFile(), strerror(errno));
   }
-  void* addr = mmap(OS::GetRandomMmapAddr(), size,
-#if V8_OS_NACL
-                    // The Native Client port of V8 uses an interpreter,
-                    // so code pages don't need PROT_EXEC.
-                    PROT_READ,
-#else
-                    PROT_READ | PROT_EXEC,
-#endif
+  void* addr = mmap(OS::GetRandomMmapAddr(), size, PROT_READ | PROT_EXEC,
                     MAP_PRIVATE, fileno(f), 0);
-  DCHECK(addr != MAP_FAILED);
-  OS::Free(addr, size);
+  DCHECK_NE(MAP_FAILED, addr);
+  Free(addr, size);
   fclose(f);
 }
 
+void OS::AdjustSchedulingParams() {}
 
-// Constants used for mmap.
-static const int kMmapFd = -1;
-static const int kMmapFdOffset = 0;
+void* OS::RemapShared(void* old_address, void* new_address, size_t size) {
+  void* result =
+      mremap(old_address, 0, size, MREMAP_FIXED | MREMAP_MAYMOVE, new_address);
 
-
-VirtualMemory::VirtualMemory() : address_(NULL), size_(0) { }
-
-
-VirtualMemory::VirtualMemory(size_t size)
-    : address_(ReserveRegion(size)), size_(size) { }
-
-
-VirtualMemory::VirtualMemory(size_t size, size_t alignment)
-    : address_(NULL), size_(0) {
-  DCHECK((alignment % OS::AllocateAlignment()) == 0);
-  size_t request_size = RoundUp(size + alignment,
-                                static_cast<intptr_t>(OS::AllocateAlignment()));
-  void* reservation = mmap(OS::GetRandomMmapAddr(),
-                           request_size,
-                           PROT_NONE,
-                           MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE,
-                           kMmapFd,
-                           kMmapFdOffset);
-  if (reservation == MAP_FAILED) return;
-
-  uint8_t* base = static_cast<uint8_t*>(reservation);
-  uint8_t* aligned_base = RoundUp(base, alignment);
-  DCHECK_LE(base, aligned_base);
-
-  // Unmap extra memory reserved before and after the desired block.
-  if (aligned_base != base) {
-    size_t prefix_size = static_cast<size_t>(aligned_base - base);
-    OS::Free(base, prefix_size);
-    request_size -= prefix_size;
+  if (result == MAP_FAILED) {
+    return nullptr;
   }
-
-  size_t aligned_size = RoundUp(size, OS::AllocateAlignment());
-  DCHECK_LE(aligned_size, request_size);
-
-  if (aligned_size != request_size) {
-    size_t suffix_size = request_size - aligned_size;
-    OS::Free(aligned_base + aligned_size, suffix_size);
-    request_size -= suffix_size;
-  }
-
-  DCHECK(aligned_size == request_size);
-
-  address_ = static_cast<void*>(aligned_base);
-  size_ = aligned_size;
-#if defined(LEAK_SANITIZER)
-  __lsan_register_root_region(address_, size_);
-#endif
-}
-
-
-VirtualMemory::~VirtualMemory() {
-  if (IsReserved()) {
-    bool result = ReleaseRegion(address(), size());
-    DCHECK(result);
-    USE(result);
-  }
-}
-
-
-bool VirtualMemory::IsReserved() {
-  return address_ != NULL;
-}
-
-
-void VirtualMemory::Reset() {
-  address_ = NULL;
-  size_ = 0;
-}
-
-
-bool VirtualMemory::Commit(void* address, size_t size, bool is_executable) {
-  return CommitRegion(address, size, is_executable);
-}
-
-
-bool VirtualMemory::Uncommit(void* address, size_t size) {
-  return UncommitRegion(address, size);
-}
-
-
-bool VirtualMemory::Guard(void* address) {
-  OS::Guard(address, OS::CommitPageSize());
-  return true;
-}
-
-
-void* VirtualMemory::ReserveRegion(size_t size) {
-  void* result = mmap(OS::GetRandomMmapAddr(),
-                      size,
-                      PROT_NONE,
-                      MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE,
-                      kMmapFd,
-                      kMmapFdOffset);
-
-  if (result == MAP_FAILED) return NULL;
-
-#if defined(LEAK_SANITIZER)
-  __lsan_register_root_region(result, size);
-#endif
+  DCHECK(result == new_address);
   return result;
 }
 
+std::optional<OS::MemoryRange> OS::GetFirstFreeMemoryRangeWithin(
+    OS::Address boundary_start, OS::Address boundary_end, size_t minimum_size,
+    size_t alignment) {
+  std::optional<OS::MemoryRange> result;
+  SignalSafeMapsParser parser;
+  if (!parser.IsValid()) return {};
 
-bool VirtualMemory::CommitRegion(void* base, size_t size, bool is_executable) {
-#if V8_OS_NACL
-  // The Native Client port of V8 uses an interpreter,
-  // so code pages don't need PROT_EXEC.
-  int prot = PROT_READ | PROT_WRITE;
+  // Search for the gaps between existing virtual memory (vm) areas. If the gap
+  // contains enough space for the requested-size range that is within the
+  // boundary, push the overlapped memory range to the vector.
+  uintptr_t gap_start = 0;
+  // This loop will terminate once the scanning hits an EOF or reaches the gap
+  // at the higher address to the end of boundary.
+  while (auto entry = parser.Next()) {
+    // Visit the gap at the lower address to this vm.
+    uintptr_t gap_end = entry->start;
+    // Skip the gaps at the lower address to the start of boundary.
+    if (gap_end > boundary_start) {
+      // The available area is the overlap of the gap and boundary. Push
+      // the overlapped memory range to the vector if there is enough space.
+      const uintptr_t overlap_start =
+          RoundUp(std::max(gap_start, boundary_start), alignment);
+      const uintptr_t overlap_end =
+          RoundDown(std::min(gap_end, boundary_end), alignment);
+      if (overlap_start < overlap_end &&
+          overlap_end - overlap_start >= minimum_size) {
+        result = {overlap_start, overlap_end};
+        break;
+      }
+    }
+    // Continue to visit the next gap.
+    gap_start = entry->end;
+    if (gap_start >= boundary_end) break;
+  }
+
+  return result;
+}
+
+//  static
+namespace {
+// Parses /proc/self/maps.
+std::unique_ptr<std::vector<MemoryRegion>> ParseProcSelfMaps(
+    FILE* fp, std::function<bool(const MemoryRegion&)> predicate,
+    bool early_stopping) {
+  auto result = std::make_unique<std::vector<MemoryRegion>>();
+
+  // Create parser. If fp is provided, use its fd.
+  // Note: we must not close the fd if it belongs to fp.
+  int fd = fp ? fileno(fp) : -1;
+  SignalSafeMapsParser parser(fd, /*should_close_fd=*/fp == nullptr);
+  if (!parser.IsValid()) return nullptr;
+
+  while (auto region = parser.Next()) {
+    if (predicate(*region)) {
+      result->push_back(std::move(*region));
+      if (early_stopping) break;
+    }
+  }
+
+  if (!result->empty()) return result;
+
+  return nullptr;
+}
+
+MemoryRegion FindEnclosingMapping(uintptr_t target_start, size_t size) {
+  auto result = ParseProcSelfMaps(
+      nullptr,
+      [=](const MemoryRegion& region) {
+        return region.start <= target_start && target_start + size < region.end;
+      },
+      true);
+  if (result) {
+    return (*result)[0];
+  } else {
+    return {};
+  }
+}
+
+bool KernelSupportsRemapDontUnmap() {
+  static bool supported = [] {
+    struct utsname buffer;
+    CHECK_EQ(uname(&buffer), 0);
+
+    int major, minor;
+    CHECK_EQ(sscanf(buffer.release, "%d.%d", &major, &minor), 2);
+
+    // MREMAP_DONTUNMAP was added in Linux 5.7, but before Linux 5.13 it only
+    // worked on private anonymous mappings, whereas RemapPages() needs it on
+    // the file-backed mapping. On older kernels mremap() may fail or have
+    // the wrong semantics.
+    return major > 5 || (major == 5 && minor >= 13);
+  }();
+
+  return supported;
+}
+}  // namespace
+
+// static
+std::vector<OS::SharedLibraryAddress> GetSharedLibraryAddresses(FILE* fp) {
+  auto regions = ParseProcSelfMaps(
+      fp,
+      [](const MemoryRegion& region) {
+        return region.permissions == PagePermissions::kReadExecute;
+      },
+      false);
+
+  if (!regions) return {};
+
+  std::vector<OS::SharedLibraryAddress> result;
+  for (const MemoryRegion& region : *regions) {
+    uintptr_t start = region.start;
+#ifdef V8_OS_ANDROID
+    size_t len = strlen(region.pathname);
+    if (len < 4 || strcmp(region.pathname + len - 4, ".apk") != 0) {
+      // Only adjust {start} based on {offset} if the file isn't the APK,
+      // since we load the library directly from the APK and don't want to
+      // apply the offset of the .so in the APK as the libraries offset.
+      start -= region.offset;
+    }
 #else
-  int prot = PROT_READ | PROT_WRITE | (is_executable ? PROT_EXEC : 0);
+    start -= region.offset;
 #endif
-  if (MAP_FAILED == mmap(base,
-                         size,
-                         prot,
-                         MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED,
-                         kMmapFd,
-                         kMmapFdOffset)) {
+    result.emplace_back(region.pathname, start, region.end);
+  }
+  return result;
+}
+
+// static
+std::vector<OS::SharedLibraryAddress> OS::GetSharedLibraryAddresses() {
+  return ::v8::base::GetSharedLibraryAddresses(nullptr);
+}
+
+// static
+bool OS::RemapPages(const void* address, size_t size, void* new_address,
+                    MemoryPermission access) {
+  uintptr_t address_addr = reinterpret_cast<uintptr_t>(address);
+
+  DCHECK(IsAligned(address_addr, AllocatePageSize()));
+  DCHECK(
+      IsAligned(reinterpret_cast<uintptr_t>(new_address), AllocatePageSize()));
+  DCHECK(IsAligned(size, AllocatePageSize()));
+
+  int protection = GetProtectionFromMemoryPermission(access);
+
+  if (KernelSupportsRemapDontUnmap()) {
+    void* result =
+        mremap(const_cast<void*>(address), size, size,
+               MREMAP_MAYMOVE | MREMAP_FIXED | MREMAP_DONTUNMAP, new_address);
+    if (result != MAP_FAILED) {
+      CHECK_EQ(result, new_address);
+      CHECK_EQ(0, mprotect(new_address, size, protection));
+      // If a remap faultily involves an anonymous mapping, the source will have
+      // been zero'd. Short sanity check in non-debug mode.
+      CHECK_EQ(0, memcmp(address, new_address, sizeof(uint64_t)));
+      // Long-form sanity check in debug mode.
+      DCHECK_EQ(0, memcmp(address, new_address, size));
+      return true;
+    }
+  }
+
+  // Fallback to reading /proc/self/maps if mremap approach fails.
+  MemoryRegion enclosing_region = FindEnclosingMapping(address_addr, size);
+  // Not found.
+  if (!enclosing_region.start) return false;
+
+  // Anonymous mapping?
+  if (strlen(enclosing_region.pathname) == 0) return false;
+
+  // Since the file is already in use for executable code, this is most likely
+  // to fail due to sandboxing, e.g. if open() is blocked outright.
+  //
+  // In Chromium on Android, the sandbox allows openat() but prohibits
+  // open(). However, the libc uses openat() in its open() wrapper, and the
+  // SELinux restrictions allow us to read from the path we want to look at,
+  // so we are in the clear.
+  int fd = open(enclosing_region.pathname, O_RDONLY);
+  if (fd == -1) return false;
+
+  // Now we have a file descriptor to the same path the data we want to remap
+  // comes from. But... is it the *same* file? This is not guaranteed (e.g. in
+  // case of updates), so to avoid hard-to-track bugs, check that the
+  // underlying file is the same using the device number and the inode. Inodes
+  // are not unique across filesystems, and can be reused. The check works
+  // here though, since we have the problems:
+  // - Inode uniqueness: check device numbers.
+  // - Inode reuse: the initial file is still open, since we are running code
+  //   from it. So its inode cannot have been reused.
+  struct stat stat_buf;
+  if (fstat(fd, &stat_buf)) {
+    close(fd);
     return false;
+  }
+
+  // Not the same file.
+  if (stat_buf.st_dev != enclosing_region.dev ||
+      stat_buf.st_ino != enclosing_region.inode) {
+    close(fd);
+    return false;
+  }
+
+  size_t offset_in_mapping = address_addr - enclosing_region.start;
+  size_t offset_in_file = enclosing_region.offset + offset_in_mapping;
+
+  void* mapped_address = mmap(new_address, size, protection,
+                              MAP_FIXED | MAP_PRIVATE, fd, offset_in_file);
+  // mmap() keeps the file open.
+  close(fd);
+
+  if (mapped_address != new_address) {
+    // Should not happen, MAP_FIXED should always map where we want.
+    UNREACHABLE();
   }
 
   return true;
 }
 
+SignalSafeMapsParser::SignalSafeMapsParser(int fd, bool should_close_fd)
+    : fd_(fd >= 0 ? fd : open("/proc/self/maps", O_RDONLY)),
+      should_close_fd_(fd >= 0 ? should_close_fd : true),
+      buffer_pos_(0),
+      buffer_end_(0) {}
 
-bool VirtualMemory::UncommitRegion(void* base, size_t size) {
-  return mmap(base,
-              size,
-              PROT_NONE,
-              MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE | MAP_FIXED,
-              kMmapFd,
-              kMmapFdOffset) != MAP_FAILED;
+SignalSafeMapsParser::~SignalSafeMapsParser() {
+  if (should_close_fd_ && fd_ >= 0) close(fd_);
 }
 
+std::optional<MemoryRegion> SignalSafeMapsParser::Next() {
+  CHECK(IsValid());
 
-bool VirtualMemory::ReleaseRegion(void* base, size_t size) {
-#if defined(LEAK_SANITIZER)
-  __lsan_unregister_root_region(base, size);
-#endif
-  return munmap(base, size) == 0;
+  // The maps file consists of the following kind of lines:
+  // 55ac243aa000-55ac243ac000 r--p 00000000 fe:01 31594735 /usr/bin/foo
+
+  MemoryRegion entry;
+  char delim;
+  if (!ReadHex(&entry.start, &delim)) return std::nullopt;
+  if (delim != '-') return std::nullopt;
+  if (!ReadHex(&entry.end, &delim)) return std::nullopt;
+  if (delim != ' ') return std::nullopt;
+
+  for (int i = 0; i < 4; ++i) {
+    if (!ReadChar(&entry.raw_permissions[i])) return std::nullopt;
+  }
+  entry.raw_permissions[4] = '\0';
+
+  entry.permissions = PagePermissions::kNoAccess;
+  if (entry.raw_permissions[0] == 'r') {
+    entry.permissions |= PagePermissions::kRead;
+  }
+  if (entry.raw_permissions[1] == 'w') {
+    entry.permissions |= PagePermissions::kWrite;
+  }
+  if (entry.raw_permissions[2] == 'x') {
+    entry.permissions |= PagePermissions::kExecute;
+  }
+
+  char c;
+  if (!ReadChar(&c)) return std::nullopt;
+  if (c != ' ') return std::nullopt;
+
+  if (!ReadHex(&entry.offset, &delim)) return std::nullopt;
+  if (delim != ' ') return std::nullopt;
+
+  uintptr_t major, minor;
+  if (!ReadHex(&major, &delim)) return std::nullopt;
+  if (delim != ':') return std::nullopt;
+  if (!ReadHex(&minor, &delim)) return std::nullopt;
+  if (delim != ' ') return std::nullopt;
+  entry.dev = makedev(static_cast<unsigned int>(major),
+                      static_cast<unsigned int>(minor));
+
+  uintptr_t inode = 0;
+  if (!ReadDecimal(&inode, &delim)) return std::nullopt;
+  entry.inode = static_cast<ino_t>(inode);
+
+  // Skip spaces.
+  while (delim == ' ') {
+    if (!ReadChar(&delim)) break;
+  }
+
+  // delim is now the first char of the pathname or newline.
+  char current_char = delim;
+  size_t path_len = 0;
+  while (current_char != '\n') {
+    if (path_len < MemoryRegion::kMaxPathnameSize - 1) {
+      entry.pathname[path_len++] = current_char;
+    }
+    if (!ReadChar(&current_char)) break;
+  }
+  entry.pathname[path_len] = '\0';
+
+  return entry;
 }
 
-
-bool VirtualMemory::HasLazyCommits() {
+bool SignalSafeMapsParser::ReadChar(char* out) {
+  if (buffer_pos_ >= buffer_end_) {
+    buffer_pos_ = 0;
+    ssize_t bytes = read(fd_, buffer_, kBufferSize);
+    if (bytes <= 0) return false;
+    buffer_end_ = bytes;
+  }
+  *out = buffer_[buffer_pos_++];
   return true;
 }
 
-} }  // namespace v8::base
+bool SignalSafeMapsParser::ReadHex(uintptr_t* out_val, char* out_delim) {
+  *out_val = 0;
+  while (true) {
+    char c;
+    if (!ReadChar(&c)) return false;
+    if (c >= '0' && c <= '9') {
+      *out_val = (*out_val << 4) | (c - '0');
+    } else if (c >= 'a' && c <= 'f') {
+      *out_val = (*out_val << 4) | (c - 'a' + 10);
+    } else if (c >= 'A' && c <= 'F') {
+      *out_val = (*out_val << 4) | (c - 'A' + 10);
+    } else {
+      *out_delim = c;
+      return true;
+    }
+  }
+}
+
+bool SignalSafeMapsParser::ReadDecimal(uintptr_t* out_val, char* out_delim) {
+  *out_val = 0;
+  while (true) {
+    char c;
+    if (!ReadChar(&c)) return false;
+    if (c >= '0' && c <= '9') {
+      *out_val = (*out_val * 10) + (c - '0');
+    } else {
+      *out_delim = c;
+      return true;
+    }
+  }
+}
+
+}  // namespace base
+}  // namespace v8

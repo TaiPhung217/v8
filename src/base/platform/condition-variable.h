@@ -5,8 +5,14 @@
 #ifndef V8_BASE_PLATFORM_CONDITION_VARIABLE_H_
 #define V8_BASE_PLATFORM_CONDITION_VARIABLE_H_
 
+#include "absl/synchronization/mutex.h"
+#include "src/base/base-export.h"
 #include "src/base/lazy-instance.h"
 #include "src/base/platform/mutex.h"
+
+#if V8_OS_STARBOARD
+#include "starboard/common/condition_variable.h"
+#endif
 
 namespace v8 {
 namespace base {
@@ -28,9 +34,11 @@ class TimeDelta;
 // the mutex and suspend the execution of the calling thread. When the condition
 // variable is notified, the thread is awakened, and the mutex is reacquired.
 
-class ConditionVariable FINAL {
+class V8_BASE_EXPORT ConditionVariable {
  public:
   ConditionVariable();
+  ConditionVariable(const ConditionVariable&) = delete;
+  ConditionVariable& operator=(const ConditionVariable&) = delete;
   ~ConditionVariable();
 
   // If any threads are waiting on this condition variable, calling
@@ -56,46 +64,11 @@ class ConditionVariable FINAL {
   // spuriously. When unblocked, regardless of the reason, the lock on the mutex
   // is reacquired and |WaitFor()| exits. Returns true if the condition variable
   // was notified prior to the timeout.
-  bool WaitFor(Mutex* mutex, const TimeDelta& rel_time) WARN_UNUSED_RESULT;
-
-  // The implementation-defined native handle type.
-#if V8_OS_POSIX
-  typedef pthread_cond_t NativeHandle;
-#elif V8_OS_WIN
-  struct Event;
-  class NativeHandle FINAL {
-   public:
-    NativeHandle() : waitlist_(NULL), freelist_(NULL) {}
-    ~NativeHandle();
-
-    Event* Pre() WARN_UNUSED_RESULT;
-    void Post(Event* event, bool result);
-
-    Mutex* mutex() { return &mutex_; }
-    Event* waitlist() { return waitlist_; }
-
-   private:
-    Event* waitlist_;
-    Event* freelist_;
-    Mutex mutex_;
-
-    DISALLOW_COPY_AND_ASSIGN(NativeHandle);
-  };
-#endif
-
-  NativeHandle& native_handle() {
-    return native_handle_;
-  }
-  const NativeHandle& native_handle() const {
-    return native_handle_;
-  }
+  bool WaitFor(Mutex* mutex, const TimeDelta& rel_time) V8_WARN_UNUSED_RESULT;
 
  private:
-  NativeHandle native_handle_;
-
-  DISALLOW_COPY_AND_ASSIGN(ConditionVariable);
+  absl::CondVar native_handle_;
 };
-
 
 // POD ConditionVariable initialized lazily (i.e. the first time Pointer() is
 // called).
@@ -104,15 +77,17 @@ class ConditionVariable FINAL {
 //       LAZY_CONDITION_VARIABLE_INITIALIZER;
 //
 //   void my_function() {
-//     LockGuard<Mutex> lock_guard(&my_mutex);
+//     MutexGuard lock_guard(&my_mutex);
 //     my_condvar.Pointer()->Wait(&my_mutex);
 //   }
-typedef LazyStaticInstance<
-    ConditionVariable, DefaultConstructTrait<ConditionVariable>,
-    ThreadSafeInitOnceTrait>::type LazyConditionVariable;
+using LazyConditionVariable =
+    LazyStaticInstance<ConditionVariable,
+                       DefaultConstructTrait<ConditionVariable>,
+                       ThreadSafeInitOnceTrait>::type;
 
 #define LAZY_CONDITION_VARIABLE_INITIALIZER LAZY_STATIC_INSTANCE_INITIALIZER
 
-} }  // namespace v8::base
+}  // namespace base
+}  // namespace v8
 
 #endif  // V8_BASE_PLATFORM_CONDITION_VARIABLE_H_
