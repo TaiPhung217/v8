@@ -1,2 +1,3 @@
-per-file i18n.*=cira@chromium.org
-per-file i18n.*=mnita@google.com
+per-file *DEPS=file:../COMMON_OWNERS
+per-file intl-*=file:../INTL_OWNERS
+per-file *-intl*=file:../INTL_OWNERS
