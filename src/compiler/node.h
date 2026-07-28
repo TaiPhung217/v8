@@ -5,18 +5,12 @@
 #ifndef V8_COMPILER_NODE_H_
 #define V8_COMPILER_NODE_H_
 
-#include <deque>
-#include <set>
-#include <vector>
-
-#include "src/v8.h"
-
+#include "src/common/globals.h"
+#include "src/compiler/graph-zone-traits.h"
 #include "src/compiler/opcodes.h"
 #include "src/compiler/operator.h"
-#include "src/types.h"
-#include "src/zone.h"
-#include "src/zone-allocator.h"
-#include "src/zone-containers.h"
+#include "src/compiler/turbofan-types.h"
+#include "src/zone/zone-containers.h"
 
 namespace v8 {
 namespace internal {
@@ -24,17 +18,16 @@ namespace compiler {
 
 // Forward declarations.
 class Edge;
-class Graph;
-
+class TFGraph;
 
 // Marks are used during traversal of the graph to distinguish states of nodes.
 // Each node has a mark which is a monotonically increasing integer, and a
 // {NodeMarker} has a range of values that indicate states of a node.
-typedef uint32_t Mark;
+using Mark = uint32_t;
 
 // NodeIds are identifying numbers for nodes that can be used to index auxiliary
 // out-of-line data associated with each node.
-typedef int NodeId;
+using NodeId = uint32_t;
 
 // A Node is the basic primitive of graphs. Nodes are chained together by
 // input/use chains but by default otherwise contain only an identifying number
@@ -45,79 +38,83 @@ typedef int NodeId;
 // compilation, e.g. during lowering passes. Other information that needs to be
 // associated with Nodes during compilation must be stored out-of-line indexed
 // by the Node's id.
-class Node FINAL {
+class V8_EXPORT_PRIVATE Node final {
  public:
-  void Initialize(const Operator* op) {
-    set_op(op);
-    set_mark(0);
-  }
+  static Node* New(Zone* zone, NodeId id, const Operator* op, int input_count,
+                   Node* const* inputs, bool has_extensible_inputs);
+  static Node* Clone(Zone* zone, NodeId id, const Node* node);
 
-  bool IsDead() const { return InputCount() > 0 && InputAt(0) == NULL; }
+  inline bool IsDead() const;
   void Kill();
 
-  void CollectProjections(ZoneVector<Node*>* projections);
-  Node* FindProjection(size_t projection_index);
-
   const Operator* op() const { return op_; }
-  void set_op(const Operator* op) { op_ = op; }
 
-  IrOpcode::Value opcode() const {
-    DCHECK(op_->opcode() <= IrOpcode::kLast);
+  constexpr IrOpcode::Value opcode() const {
+    DCHECK_GE(IrOpcode::kLast, op_->opcode());
     return static_cast<IrOpcode::Value>(op_->opcode());
   }
 
-  NodeId id() const { return id_; }
+  NodeId id() const { return IdField::decode(bit_field_); }
 
-  int InputCount() const { return input_count(); }
-  Node* InputAt(int index) const { return GetInputRecordPtr(index)->to; }
-  inline void ReplaceInput(int index, Node* new_input);
-  inline void AppendInput(Zone* zone, Node* new_input);
-  inline void InsertInput(Zone* zone, int index, Node* new_input);
-  inline void RemoveInput(int index);
+  int InputCount() const {
+    return has_inline_inputs() ? InlineCountField::decode(bit_field_)
+                               : outline_inputs()->count_;
+  }
+
+#ifdef DEBUG
+  void Verify();
+#else
+  inline void Verify() {}
+#endif
+
+  Node* InputAt(int index) const {
+    DCHECK_LE(0, index);
+    DCHECK_LT(index, InputCount());
+    return *GetInputPtrConst(index);
+  }
+
+  void ReplaceInput(int index, Node* new_to) {
+    DCHECK_LE(0, index);
+    DCHECK_LT(index, InputCount());
+    ZoneNodePtr* input_ptr = GetInputPtr(index);
+    Node* old_to = *input_ptr;
+    if (old_to != new_to) {
+      Use* use = GetUsePtr(index);
+      if (old_to) old_to->RemoveUse(use);
+      *input_ptr = new_to;
+      if (new_to) new_to->AppendUse(use);
+    }
+  }
+
+  void AppendInput(Zone* zone, Node* new_to);
+  void InsertInput(Zone* zone, int index, Node* new_to);
+  void InsertInputs(Zone* zone, int index, int count);
+  // Returns the removed input.
+  Node* RemoveInput(int index);
+  void NullAllInputs();
+  void TrimInputCount(int new_input_count);
+  // Can trim, extend by appending new inputs, or do nothing.
+  void EnsureInputCount(Zone* zone, int new_input_count);
 
   int UseCount() const;
-  Node* UseAt(int index) const;
-  inline void ReplaceUses(Node* replace_to);
-  template <class UnaryPredicate>
-  inline void ReplaceUsesIf(UnaryPredicate pred, Node* replace_to);
-  inline void RemoveAllInputs();
+  int BranchUseCount() const;
+  void ReplaceUses(Node* replace_to);
 
-  inline void TrimInputCount(int input_count);
+  class InputEdges;
+  inline InputEdges input_edges();
 
-  class InputEdges {
+  class Inputs;
+  inline Inputs inputs() const;
+  inline base::Vector<Node*> inputs_vector() const;
+
+  class UseEdges final {
    public:
+    using value_type = Edge;
+
     class iterator;
-    iterator begin() const;
-    iterator end() const;
-    bool empty() const;
+    inline iterator begin() const;
+    inline iterator end() const;
 
-    explicit InputEdges(Node* node) : node_(node) {}
-
-   private:
-    Node* node_;
-  };
-
-  class Inputs {
-   public:
-    class iterator;
-    iterator begin() const;
-    iterator end() const;
-    bool empty() const;
-
-    explicit Inputs(Node* node) : node_(node) {}
-
-   private:
-    Node* node_;
-  };
-
-  Inputs inputs() { return Inputs(this); }
-  InputEdges input_edges() { return InputEdges(this); }
-
-  class UseEdges {
-   public:
-    class iterator;
-    iterator begin() const;
-    iterator end() const;
     bool empty() const;
 
     explicit UseEdges(Node* node) : node_(node) {}
@@ -126,11 +123,16 @@ class Node FINAL {
     Node* node_;
   };
 
-  class Uses {
+  UseEdges use_edges() { return UseEdges(this); }
+
+  class V8_EXPORT_PRIVATE Uses final {
    public:
-    class iterator;
-    iterator begin() const;
-    iterator end() const;
+    using value_type = Node*;
+
+    class const_iterator;
+    inline const_iterator begin() const;
+    inline const_iterator end() const;
+
     bool empty() const;
 
     explicit Uses(Node* node) : node_(node) {}
@@ -140,518 +142,574 @@ class Node FINAL {
   };
 
   Uses uses() { return Uses(this); }
-  UseEdges use_edges() { return UseEdges(this); }
 
-  bool OwnedBy(Node* owner) const;
+  // Returns true if {owner} is the only user of {this} node.
+  bool OwnedBy(Node const* owner) const;
 
-  static Node* New(Graph* graph, int input_count, Node** inputs,
-                   bool has_extensible_inputs);
+  // Returns true if {owner1} and {owner2} are the only users of {this} node.
+  bool OwnedBy(Node const* owner1, Node const* owner2) const;
 
- protected:
-  friend class Graph;
-  friend class Edge;
+  void Print() const { Print(1); }
+  void Print(int depth) const;
+  void Print(std::ostream&, int depth = 1) const;
 
-  class Use : public ZoneObject {
-   public:
-    Node* from;
-    Use* next;
-    Use* prev;
-    int input_index;
+ private:
+  template <typename NodePtrT>
+  inline static Node* NewImpl(Zone* zone, NodeId id, const Operator* op,
+                              int input_count, NodePtrT const* inputs,
+                              bool has_extensible_inputs);
+
+  struct Use;
+  using ZoneUsePtr = GraphZoneTraits::Ptr<Use>;
+
+  // Out of line storage for inputs when the number of inputs overflowed the
+  // capacity of the inline-allocated space.
+  struct OutOfLineInputs {
+    ZoneNodePtr node_;
+    int count_;
+    int capacity_;
+
+    // Inputs are allocated right behind the OutOfLineInputs instance.
+    inline ZoneNodePtr* inputs();
+
+    static OutOfLineInputs* New(Zone* zone, int capacity);
+    void ExtractFrom(Use* use_ptr, ZoneNodePtr* input_ptr, int count);
   };
+  using ZoneOutOfLineInputsPtr = GraphZoneTraits::Ptr<OutOfLineInputs>;
 
-  class Input {
-   public:
-    Node* to;
-    Use* use;
+  // A link in the use chain for a node. Every input {i} to a node {n} has an
+  // associated {Use} which is linked into the use chain of the {i} node.
+  struct Use {
+    ZoneUsePtr next;
+    ZoneUsePtr prev;
+    uint32_t bit_field_;
 
-    void Update(Node* new_to);
-  };
-
-  void EnsureAppendableInputs(Zone* zone);
-
-  Input* GetInputRecordPtr(int index) const {
-    if (has_appendable_inputs()) {
-      return &((*inputs_.appendable_)[index]);
-    } else {
-      return &inputs_.static_[index];
+    int input_index() const { return InputIndexField::decode(bit_field_); }
+    bool is_inline_use() const { return InlineField::decode(bit_field_); }
+    ZoneNodePtr* input_ptr() {
+      int index = input_index();
+      Use* start = this + 1 + index;
+      ZoneNodePtr* inputs =
+          is_inline_use() ? reinterpret_cast<Node*>(start)->inline_inputs()
+                          : reinterpret_cast<OutOfLineInputs*>(start)->inputs();
+      return &inputs[index];
     }
+
+    Node* from() {
+      Use* start = this + 1 + input_index();
+      return is_inline_use() ? reinterpret_cast<Node*>(start)
+                             : reinterpret_cast<OutOfLineInputs*>(start)->node_;
+    }
+
+    using InlineField = base::BitField<bool, 0, 1>;
+    using InputIndexField = base::BitField<unsigned, 1, 31>;
+  };
+
+  //============================================================================
+  //== Memory layout ===========================================================
+  //============================================================================
+  // Saving space for big graphs is important. We use a memory layout trick to
+  // be able to map {Node} objects to {Use} objects and vice-versa in a
+  // space-efficient manner.
+  //
+  // {Use} links are laid out in memory directly before a {Node}, followed by
+  // direct pointers to input {Nodes}.
+  //
+  // inline case:
+  // |Use #N  |Use #N-1|...|Use #1  |Use #0  |Node xxxx |I#0|I#1|...|I#N-1|I#N|
+  //          ^                              ^                  ^
+  //          + Use                          + Node             + Input
+  //
+  // Since every {Use} instance records its {input_index}, pointer arithmetic
+  // can compute the {Node}.
+  //
+  // out-of-line case:
+  //     |Node xxxx |
+  //     ^       + outline ------------------+
+  //     +----------------------------------------+
+  //                                         |    |
+  //                                         v    | node
+  // |Use #N  |Use #N-1|...|Use #1  |Use #0  |OOL xxxxx |I#0|I#1|...|I#N-1|I#N|
+  //          ^                                                 ^
+  //          + Use                                             + Input
+  //
+  // Out-of-line storage of input lists is needed if appending an input to
+  // a node exceeds the maximum inline capacity.
+
+  Node(NodeId id, const Operator* op, int inline_count, int inline_capacity);
+  Node(const Node&) = delete;
+  Node& operator=(const Node&) = delete;
+
+  inline Address inputs_location() const;
+
+  ZoneNodePtr* inline_inputs() const {
+    return reinterpret_cast<ZoneNodePtr*>(inputs_location());
+  }
+  OutOfLineInputs* outline_inputs() const {
+    return *reinterpret_cast<ZoneOutOfLineInputsPtr*>(inputs_location());
+  }
+  void set_outline_inputs(OutOfLineInputs* outline) {
+    *reinterpret_cast<ZoneOutOfLineInputsPtr*>(inputs_location()) = outline;
   }
 
-  inline void AppendUse(Use* use);
-  inline void RemoveUse(Use* use);
+  ZoneNodePtr const* GetInputPtrConst(int input_index) const {
+    return has_inline_inputs() ? &(inline_inputs()[input_index])
+                               : &(outline_inputs()->inputs()[input_index]);
+  }
+  ZoneNodePtr* GetInputPtr(int input_index) {
+    return has_inline_inputs() ? &(inline_inputs()[input_index])
+                               : &(outline_inputs()->inputs()[input_index]);
+  }
+  Use* GetUsePtr(int input_index) {
+    Use* ptr = has_inline_inputs() ? reinterpret_cast<Use*>(this)
+                                   : reinterpret_cast<Use*>(outline_inputs());
+    return &ptr[-1 - input_index];
+  }
+
+  void AppendUse(Use* use);
+  void RemoveUse(Use* use);
 
   void* operator new(size_t, void* location) { return location; }
 
- private:
-  inline Node(NodeId id, int input_count, int reserve_input_count);
+  // Only NodeProperties should manipulate the op.
+  void set_op(const Operator* op) { op_ = op; }
 
-  typedef ZoneDeque<Input> InputDeque;
-
-  friend class NodeProperties;
-  template <typename State>
-  friend class NodeMarker;
-
-  // Only NodeProperties should manipulate the bounds.
-  Bounds bounds() { return bounds_; }
-  void set_bounds(Bounds b) { bounds_ = b; }
+  // Only NodeProperties should manipulate the type.
+  Type type() const { return type_; }
+  void set_type(Type type) { type_ = type; }
 
   // Only NodeMarkers should manipulate the marks on nodes.
-  Mark mark() { return mark_; }
+  Mark mark() const { return mark_; }
   void set_mark(Mark mark) { mark_ = mark; }
 
-  int input_count() const { return InputCountField::decode(bit_field_); }
-  void set_input_count(int input_count) {
-    DCHECK_LE(0, input_count);
-    bit_field_ = InputCountField::update(bit_field_, input_count);
+  inline bool has_inline_inputs() const {
+    return InlineCountField::decode(bit_field_) != kOutlineMarker;
   }
 
-  int reserved_input_count() const {
-    return ReservedInputCountField::decode(bit_field_);
-  }
-  void set_reserved_input_count(int reserved_input_count) {
-    DCHECK_LE(0, reserved_input_count);
-    bit_field_ =
-        ReservedInputCountField::update(bit_field_, reserved_input_count);
-  }
+  void ClearInputs(int start, int count);
 
-  bool has_appendable_inputs() const {
-    return HasAppendableInputsField::decode(bit_field_);
-  }
-  void set_has_appendable_inputs(bool has_appendable_inputs) {
-    bit_field_ =
-        HasAppendableInputsField::update(bit_field_, has_appendable_inputs);
-  }
-
-  typedef BitField<unsigned, 0, 29> InputCountField;
-  typedef BitField<unsigned, 29, 2> ReservedInputCountField;
-  typedef BitField<unsigned, 31, 1> HasAppendableInputsField;
-  static const int kDefaultReservedInputs = ReservedInputCountField::kMax;
+  using IdField = base::BitField<NodeId, 0, 24>;
+  using InlineCountField = base::BitField<unsigned, 24, 4>;
+  using InlineCapacityField = base::BitField<unsigned, 28, 4>;
+  static const int kOutlineMarker = InlineCountField::kMax;
+  static const int kMaxInlineCapacity = InlineCapacityField::kMax - 1;
 
   const Operator* op_;
-  Bounds bounds_;
+  Type type_;
   Mark mark_;
-  NodeId id_;
-  unsigned bit_field_;
-  union {
-    // When a node is initially allocated, it uses a static buffer to hold its
-    // inputs under the assumption that the number of outputs will not increase.
-    // When the first input is appended, the static buffer is converted into a
-    // deque to allow for space-efficient growing.
-    Input* static_;
-    InputDeque* appendable_;
-  } inputs_;
-  Use* first_use_;
-  Use* last_use_;
+  uint32_t bit_field_;
+  ZoneUsePtr first_use_;
 
-  DISALLOW_COPY_AND_ASSIGN(Node);
+  friend class Edge;
+  friend class NodeMarkerBase;
+  friend class NodeProperties;
 };
 
+Address Node::inputs_location() const {
+  return reinterpret_cast<Address>(this) + sizeof(Node);
+}
 
-// An encapsulation for information associated with a single use of node as a
+ZoneNodePtr* Node::OutOfLineInputs::inputs() {
+  return reinterpret_cast<ZoneNodePtr*>(reinterpret_cast<Address>(this) +
+                                        sizeof(Node::OutOfLineInputs));
+}
+
+std::ostream& operator<<(std::ostream& os, const Node& n);
+
+// Base class for node wrappers.
+class NodeWrapper {
+ public:
+  explicit constexpr NodeWrapper(Node* node) : node_(node) {}
+  operator Node*() const { return node_; }
+  Node* operator->() const { return node_; }
+
+ protected:
+  Node* node() const { return node_; }
+  void set_node(Node* node) {
+    DCHECK_NOT_NULL(node);
+    node_ = node;
+  }
+
+ private:
+  Node* node_;
+};
+
+// Wrapper classes for special node/edge types (effect, control, frame states).
+
+class Effect : public NodeWrapper {
+ public:
+  explicit constexpr Effect(Node* node) : NodeWrapper(node) {
+    // TODO(jgruber): Remove the End special case.
+    SLOW_DCHECK(node == nullptr || node->op()->opcode() == IrOpcode::kEnd ||
+                node->op()->EffectOutputCount() > 0);
+  }
+
+  // Support the common `Node* x = effect = ...` pattern.
+  Node* operator=(Node* value) {
+    DCHECK_GT(value->op()->EffectOutputCount(), 0);
+    set_node(value);
+    return value;
+  }
+};
+
+class Control : public NodeWrapper {
+ public:
+  explicit constexpr Control(Node* node) : NodeWrapper(node) {
+    // TODO(jgruber): Remove the End special case.
+    SLOW_DCHECK(node == nullptr || node->opcode() == IrOpcode::kEnd ||
+                node->op()->ControlOutputCount() > 0);
+  }
+
+  // Support the common `Node* x = control = ...` pattern.
+  Node* operator=(Node* value) {
+    DCHECK_GT(value->op()->ControlOutputCount(), 0);
+    set_node(value);
+    return value;
+  }
+};
+
+// Typedefs to shorten commonly used Node containers.
+using NodeDeque = ZoneDeque<Node*>;
+using NodeSet = ZoneSet<Node*>;
+using NodeVector = ZoneVector<Node*>;
+using NodeVectorVector = ZoneVector<NodeVector>;
+
+class Node::InputEdges final {
+ public:
+  using value_type = Edge;
+
+  class iterator;
+  inline iterator begin() const;
+  inline iterator end() const;
+
+  bool empty() const { return count_ == 0; }
+  int count() const { return count_; }
+
+  inline value_type operator[](int index) const;
+
+  InputEdges(ZoneNodePtr* input_root, Use* use_root, int count)
+      : input_root_(input_root), use_root_(use_root), count_(count) {}
+
+ private:
+  ZoneNodePtr* input_root_;
+  Use* use_root_;
+  int count_;
+};
+
+class V8_EXPORT_PRIVATE Node::Inputs final {
+ public:
+  using value_type = Node*;
+
+  class const_iterator;
+  inline const_iterator begin() const;
+  inline const_iterator end() const;
+
+  bool empty() const { return count_ == 0; }
+  int count() const { return count_; }
+
+  inline value_type operator[](int index) const;
+
+  explicit Inputs(ZoneNodePtr const* input_root, int count)
+      : input_root_(input_root), count_(count) {}
+
+ private:
+  ZoneNodePtr const* input_root_;
+  int count_;
+};
+
+// An encapsulation for information associated with a single use of a node as an
 // input from another node, allowing access to both the defining node and
 // the node having the input.
-class Edge {
+class Edge final {
  public:
-  Node* from() const { return input_->use->from; }
-  Node* to() const { return input_->to; }
+  Node* from() const { return use_->from(); }
+  Node* to() const { return *input_ptr_; }
   int index() const {
-    int index = input_->use->input_index;
-    DCHECK(index < input_->use->from->input_count());
+    int const index = use_->input_index();
+    DCHECK_LT(index, use_->from()->InputCount());
     return index;
   }
 
-  bool operator==(const Edge& other) { return input_ == other.input_; }
+  bool operator==(const Edge& other) { return input_ptr_ == other.input_ptr_; }
   bool operator!=(const Edge& other) { return !(*this == other); }
 
-  void UpdateTo(Node* new_to) { input_->Update(new_to); }
+  void UpdateTo(Node* new_to) {
+    Node* old_to = *input_ptr_;
+    if (old_to != new_to) {
+      if (old_to) old_to->RemoveUse(use_);
+      *input_ptr_ = new_to;
+      if (new_to) new_to->AppendUse(use_);
+    }
+  }
 
  private:
-  friend class Node::Uses::iterator;
-  friend class Node::Inputs::iterator;
   friend class Node::UseEdges::iterator;
+  friend class Node::InputEdges;
   friend class Node::InputEdges::iterator;
 
-  explicit Edge(Node::Input* input) : input_(input) {}
+  Edge(Node::Use* use, ZoneNodePtr* input_ptr)
+      : use_(use), input_ptr_(input_ptr) {
+    DCHECK_NOT_NULL(use);
+    DCHECK_NOT_NULL(input_ptr);
+    DCHECK_EQ(input_ptr, use->input_ptr());
+  }
 
-  Node::Input* input_;
+  Node::Use* use_;
+  ZoneNodePtr* input_ptr_;
 };
 
+bool Node::IsDead() const {
+  Node::Inputs inputs = this->inputs();
+  return inputs.count() > 0 && inputs[0] == nullptr;
+}
 
-// A forward iterator to visit the edges for the input dependencies of a node..
-class Node::InputEdges::iterator {
+Node::InputEdges Node::input_edges() {
+  int inline_count = InlineCountField::decode(bit_field_);
+  if (inline_count != kOutlineMarker) {
+    return InputEdges(inline_inputs(), reinterpret_cast<Use*>(this) - 1,
+                      inline_count);
+  } else {
+    return InputEdges(outline_inputs()->inputs(),
+                      reinterpret_cast<Use*>(outline_inputs()) - 1,
+                      outline_inputs()->count_);
+  }
+}
+
+Node::Inputs Node::inputs() const {
+  int inline_count = InlineCountField::decode(bit_field_);
+  if (inline_count != kOutlineMarker) {
+    return Inputs(inline_inputs(), inline_count);
+  } else {
+    return Inputs(outline_inputs()->inputs(), outline_inputs()->count_);
+  }
+}
+
+base::Vector<Node*> Node::inputs_vector() const {
+  int inline_count = InlineCountField::decode(bit_field_);
+  if (inline_count != kOutlineMarker) {
+    return base::VectorOf<Node*>(inline_inputs(), inline_count);
+  } else {
+    return base::VectorOf<Node*>(outline_inputs()->inputs(),
+                                 outline_inputs()->count_);
+  }
+}
+
+// A forward iterator to visit the edges for the input dependencies of a node.
+class Node::InputEdges::iterator final {
  public:
-  typedef std::forward_iterator_tag iterator_category;
-  typedef int difference_type;
-  typedef Edge value_type;
-  typedef Edge* pointer;
-  typedef Edge& reference;
-  iterator(const Node::InputEdges::iterator& other)  // NOLINT
-      : input_(other.input_) {}
-  iterator() : input_(NULL) {}
+  using iterator_category = std::forward_iterator_tag;
+  using difference_type = std::ptrdiff_t;
+  using value_type = Edge;
+  using pointer = Edge*;
+  using reference = Edge&;
 
-  Edge operator*() const { return Edge(input_); }
-  bool operator==(const iterator& other) const { return Equals(other); }
-  bool operator!=(const iterator& other) const { return !Equals(other); }
+  iterator() : use_(nullptr), input_ptr_(nullptr) {}
+  iterator(const iterator& other) = default;
+
+  Edge operator*() const { return Edge(use_, input_ptr_); }
+  bool operator==(const iterator& other) const {
+    return input_ptr_ == other.input_ptr_;
+  }
+  bool operator!=(const iterator& other) const { return !(*this == other); }
   iterator& operator++() {
-    DCHECK(input_ != NULL);
-    Edge edge(input_);
-    Node* from = edge.from();
-    SetInput(from, input_->use->input_index + 1);
+    input_ptr_++;
+    use_--;
     return *this;
   }
-  iterator operator++(int) {
-    iterator result(*this);
-    ++(*this);
-    return result;
+  iterator operator++(int);
+  iterator& operator+=(difference_type offset) {
+    input_ptr_ += offset;
+    use_ -= offset;
+    return *this;
+  }
+  iterator operator+(difference_type offset) const {
+    return iterator(use_ - offset, input_ptr_ + offset);
+  }
+  difference_type operator-(const iterator& other) const {
+    return input_ptr_ - other.input_ptr_;
   }
 
  private:
   friend class Node;
 
-  explicit iterator(Node* from, int index = 0) : input_(NULL) {
-    SetInput(from, index);
-  }
+  explicit iterator(Use* use, ZoneNodePtr* input_ptr)
+      : use_(use), input_ptr_(input_ptr) {}
 
-  bool Equals(const iterator& other) const { return other.input_ == input_; }
-  void SetInput(Node* from, int index) {
-    DCHECK(index >= 0 && index <= from->InputCount());
-    if (index < from->InputCount()) {
-      input_ = from->GetInputRecordPtr(index);
-    } else {
-      input_ = NULL;
-    }
-  }
-
-  Input* input_;
+  Use* use_;
+  ZoneNodePtr* input_ptr_;
 };
 
 
+Node::InputEdges::iterator Node::InputEdges::begin() const {
+  return Node::InputEdges::iterator(use_root_, input_root_);
+}
+
+
+Node::InputEdges::iterator Node::InputEdges::end() const {
+  return Node::InputEdges::iterator(use_root_ - count_, input_root_ + count_);
+}
+
+Edge Node::InputEdges::operator[](int index) const {
+  return Edge(use_root_ + index, input_root_ + index);
+}
+
 // A forward iterator to visit the inputs of a node.
-class Node::Inputs::iterator {
+class Node::Inputs::const_iterator final {
  public:
-  typedef std::forward_iterator_tag iterator_category;
-  typedef int difference_type;
-  typedef Node* value_type;
-  typedef Node** pointer;
-  typedef Node*& reference;
+  using iterator_category = std::forward_iterator_tag;
+  using difference_type = std::ptrdiff_t;
+  using value_type = Node*;
+  using pointer = const value_type*;
+  using reference = value_type&;
 
-  iterator(const Node::Inputs::iterator& other)  // NOLINT
-      : iter_(other.iter_) {}
+  const_iterator(const const_iterator& other) = default;
 
-  Node* operator*() const { return (*iter_).to(); }
-  bool operator==(const iterator& other) const { return Equals(other); }
-  bool operator!=(const iterator& other) const { return !Equals(other); }
-  iterator& operator++() {
-    ++iter_;
+  Node* operator*() const { return *input_ptr_; }
+  bool operator==(const const_iterator& other) const {
+    return input_ptr_ == other.input_ptr_;
+  }
+  bool operator!=(const const_iterator& other) const {
+    return !(*this == other);
+  }
+  const_iterator& operator++() {
+    ++input_ptr_;
     return *this;
   }
-  iterator operator++(int) {
-    iterator result(*this);
-    ++(*this);
-    return result;
+  const_iterator operator++(int);
+  const_iterator& operator+=(difference_type offset) {
+    input_ptr_ += offset;
+    return *this;
   }
-
+  const_iterator operator+(difference_type offset) const {
+    return const_iterator(input_ptr_ + offset);
+  }
+  difference_type operator-(const const_iterator& other) const {
+    return input_ptr_ - other.input_ptr_;
+  }
 
  private:
   friend class Node::Inputs;
 
-  explicit iterator(Node* node, int index) : iter_(node, index) {}
+  explicit const_iterator(ZoneNodePtr const* input_ptr)
+      : input_ptr_(input_ptr) {}
 
-  bool Equals(const iterator& other) const { return other.iter_ == iter_; }
-
-  Node::InputEdges::iterator iter_;
+  ZoneNodePtr const* input_ptr_;
 };
 
-// A forward iterator to visit the uses edges of a node. The edges are returned
-// in
-// the order in which they were added as inputs.
-class Node::UseEdges::iterator {
+
+Node::Inputs::const_iterator Node::Inputs::begin() const {
+  return const_iterator(input_root_);
+}
+
+
+Node::Inputs::const_iterator Node::Inputs::end() const {
+  return const_iterator(input_root_ + count_);
+}
+
+Node* Node::Inputs::operator[](int index) const { return input_root_[index]; }
+
+// A forward iterator to visit the uses edges of a node.
+class Node::UseEdges::iterator final {
  public:
-  iterator(const Node::UseEdges::iterator& other)  // NOLINT
-      : current_(other.current_),
-        next_(other.next_) {}
+  iterator(const iterator& other) = default;
 
-  Edge operator*() const { return Edge(CurrentInput()); }
-
-  bool operator==(const iterator& other) { return Equals(other); }
-  bool operator!=(const iterator& other) { return !Equals(other); }
+  Edge operator*() const { return Edge(current_, current_->input_ptr()); }
+  bool operator==(const iterator& other) const {
+    return current_ == other.current_;
+  }
+  bool operator!=(const iterator& other) const { return !(*this == other); }
   iterator& operator++() {
-    DCHECK(current_ != NULL);
+    DCHECK_NOT_NULL(current_);
     current_ = next_;
-    next_ = (current_ == NULL) ? NULL : current_->next;
+    next_ = current_ ? static_cast<Node::Use*>(current_->next) : nullptr;
     return *this;
   }
-  iterator operator++(int) {
-    iterator result(*this);
-    ++(*this);
-    return result;
-  }
+  iterator operator++(int);
 
  private:
   friend class Node::UseEdges;
 
-  iterator() : current_(NULL), next_(NULL) {}
+  iterator() : current_(nullptr), next_(nullptr) {}
   explicit iterator(Node* node)
       : current_(node->first_use_),
-        next_(current_ == NULL ? NULL : current_->next) {}
-
-  bool Equals(const iterator& other) const {
-    return other.current_ == current_;
-  }
-
-  Input* CurrentInput() const {
-    return current_->from->GetInputRecordPtr(current_->input_index);
-  }
+        next_(current_ ? static_cast<Node::Use*>(current_->next) : nullptr) {}
 
   Node::Use* current_;
   Node::Use* next_;
 };
 
 
-// A forward iterator to visit the uses of a node. The uses are returned in
-// the order in which they were added as inputs.
-class Node::Uses::iterator {
+Node::UseEdges::iterator Node::UseEdges::begin() const {
+  return Node::UseEdges::iterator(this->node_);
+}
+
+
+Node::UseEdges::iterator Node::UseEdges::end() const {
+  return Node::UseEdges::iterator();
+}
+
+
+// A forward iterator to visit the uses of a node.
+class Node::Uses::const_iterator final {
  public:
-  iterator(const Node::Uses::iterator& other)  // NOLINT
-      : current_(other.current_) {}
+  using iterator_category = std::forward_iterator_tag;
+  using difference_type = int;
+  using value_type = Node*;
+  using pointer = Node**;
+  using reference = Node*&;
 
-  Node* operator*() { return current_->from; }
-
-  bool operator==(const iterator& other) { return other.current_ == current_; }
-  bool operator!=(const iterator& other) { return other.current_ != current_; }
-  iterator& operator++() {
-    DCHECK(current_ != NULL);
+  Node* operator*() const { return current_->from(); }
+  bool operator==(const const_iterator& other) const {
+    return other.current_ == current_;
+  }
+  bool operator!=(const const_iterator& other) const {
+    return other.current_ != current_;
+  }
+  const_iterator& operator++() {
+    DCHECK_NOT_NULL(current_);
+    // Checking no use gets mutated while iterating through them, a potential
+    // very tricky cause of bug.
     current_ = current_->next;
+#ifdef DEBUG
+    DCHECK_EQ(current_, next_);
+    next_ = current_ ? current_->next : nullptr;
+#endif
     return *this;
   }
+  const_iterator operator++(int);
 
  private:
   friend class Node::Uses;
 
-  iterator() : current_(NULL) {}
-  explicit iterator(Node* node) : current_(node->first_use_) {}
-
-  Input* CurrentInput() const {
-    return current_->from->GetInputRecordPtr(current_->input_index);
+  const_iterator() : current_(nullptr) {}
+  explicit const_iterator(Node* node)
+      : current_(node->first_use_)
+#ifdef DEBUG
+        ,
+        next_(current_ ? current_->next : nullptr)
+#endif
+  {
   }
 
   Node::Use* current_;
+#ifdef DEBUG
+  Node::Use* next_;
+#endif
 };
 
 
-std::ostream& operator<<(std::ostream& os, const Node& n);
-
-typedef std::set<Node*, std::less<Node*>, zone_allocator<Node*> > NodeSet;
-typedef NodeSet::iterator NodeSetIter;
-typedef NodeSet::reverse_iterator NodeSetRIter;
-
-typedef ZoneDeque<Node*> NodeDeque;
-
-typedef ZoneVector<Node*> NodeVector;
-typedef NodeVector::iterator NodeVectorIter;
-typedef NodeVector::const_iterator NodeVectorConstIter;
-typedef NodeVector::reverse_iterator NodeVectorRIter;
-
-typedef ZoneVector<NodeVector> NodeVectorVector;
-typedef NodeVectorVector::iterator NodeVectorVectorIter;
-typedef NodeVectorVector::reverse_iterator NodeVectorVectorRIter;
-
-typedef Node::Uses::iterator UseIter;
-typedef Node::Inputs::iterator InputIter;
-
-// Helper to extract parameters from Operator1<*> nodes.
-template <typename T>
-static inline const T& OpParameter(const Node* node) {
-  return OpParameter<T>(node->op());
+Node::Uses::const_iterator Node::Uses::begin() const {
+  return const_iterator(this->node_);
 }
 
-inline Node::InputEdges::iterator Node::InputEdges::begin() const {
-  return Node::InputEdges::iterator(this->node_, 0);
+
+Node::Uses::const_iterator Node::Uses::end() const { return const_iterator(); }
+
+inline Node::Uses::const_iterator begin(const Node::Uses& uses) {
+  return uses.begin();
 }
-
-inline Node::InputEdges::iterator Node::InputEdges::end() const {
-  return Node::InputEdges::iterator(this->node_, this->node_->InputCount());
-}
-
-inline Node::Inputs::iterator Node::Inputs::begin() const {
-  return Node::Inputs::iterator(this->node_, 0);
-}
-
-inline Node::Inputs::iterator Node::Inputs::end() const {
-  return Node::Inputs::iterator(this->node_, this->node_->InputCount());
-}
-
-inline Node::UseEdges::iterator Node::UseEdges::begin() const {
-  return Node::UseEdges::iterator(this->node_);
-}
-
-inline Node::UseEdges::iterator Node::UseEdges::end() const {
-  return Node::UseEdges::iterator();
-}
-
-inline Node::Uses::iterator Node::Uses::begin() const {
-  return Node::Uses::iterator(this->node_);
-}
-
-inline Node::Uses::iterator Node::Uses::end() const {
-  return Node::Uses::iterator();
-}
-
-inline bool Node::InputEdges::empty() const { return begin() == end(); }
-inline bool Node::Uses::empty() const { return begin() == end(); }
-inline bool Node::UseEdges::empty() const { return begin() == end(); }
-inline bool Node::Inputs::empty() const { return begin() == end(); }
-
-inline void Node::ReplaceUses(Node* replace_to) {
-  for (Use* use = first_use_; use != NULL; use = use->next) {
-    use->from->GetInputRecordPtr(use->input_index)->to = replace_to;
-  }
-  if (replace_to->last_use_ == NULL) {
-    DCHECK_EQ(NULL, replace_to->first_use_);
-    replace_to->first_use_ = first_use_;
-    replace_to->last_use_ = last_use_;
-  } else if (first_use_ != NULL) {
-    DCHECK_NE(NULL, replace_to->first_use_);
-    replace_to->last_use_->next = first_use_;
-    first_use_->prev = replace_to->last_use_;
-    replace_to->last_use_ = last_use_;
-  }
-  first_use_ = NULL;
-  last_use_ = NULL;
-}
-
-template <class UnaryPredicate>
-inline void Node::ReplaceUsesIf(UnaryPredicate pred, Node* replace_to) {
-  for (Use* use = first_use_; use != NULL;) {
-    Use* next = use->next;
-    if (pred(use->from)) {
-      RemoveUse(use);
-      replace_to->AppendUse(use);
-      use->from->GetInputRecordPtr(use->input_index)->to = replace_to;
-    }
-    use = next;
-  }
-}
-
-inline void Node::RemoveAllInputs() {
-  for (Edge edge : input_edges()) {
-    edge.UpdateTo(NULL);
-  }
-}
-
-inline void Node::TrimInputCount(int new_input_count) {
-  if (new_input_count == input_count()) return;  // Nothing to do.
-
-  DCHECK(new_input_count < input_count());
-
-  // Update inline inputs.
-  for (int i = new_input_count; i < input_count(); i++) {
-    Node::Input* input = GetInputRecordPtr(i);
-    input->Update(NULL);
-  }
-  set_input_count(new_input_count);
-}
-
-inline void Node::ReplaceInput(int index, Node* new_to) {
-  Input* input = GetInputRecordPtr(index);
-  input->Update(new_to);
-}
-
-inline void Node::Input::Update(Node* new_to) {
-  Node* old_to = this->to;
-  if (new_to == old_to) return;  // Nothing to do.
-  // Snip out the use from where it used to be
-  if (old_to != NULL) {
-    old_to->RemoveUse(use);
-  }
-  to = new_to;
-  // And put it into the new node's use list.
-  if (new_to != NULL) {
-    new_to->AppendUse(use);
-  } else {
-    use->next = NULL;
-    use->prev = NULL;
-  }
-}
-
-inline void Node::EnsureAppendableInputs(Zone* zone) {
-  if (!has_appendable_inputs()) {
-    void* deque_buffer = zone->New(sizeof(InputDeque));
-    InputDeque* deque = new (deque_buffer) InputDeque(zone);
-    for (int i = 0; i < input_count(); ++i) {
-      deque->push_back(inputs_.static_[i]);
-    }
-    inputs_.appendable_ = deque;
-    set_has_appendable_inputs(true);
-  }
-}
-
-inline void Node::AppendInput(Zone* zone, Node* to_append) {
-  Use* new_use = new (zone) Use;
-  Input new_input;
-  new_input.to = to_append;
-  new_input.use = new_use;
-  if (reserved_input_count() > 0) {
-    DCHECK(!has_appendable_inputs());
-    set_reserved_input_count(reserved_input_count() - 1);
-    inputs_.static_[input_count()] = new_input;
-  } else {
-    EnsureAppendableInputs(zone);
-    inputs_.appendable_->push_back(new_input);
-  }
-  new_use->input_index = input_count();
-  new_use->from = this;
-  to_append->AppendUse(new_use);
-  set_input_count(input_count() + 1);
-}
-
-inline void Node::InsertInput(Zone* zone, int index, Node* to_insert) {
-  DCHECK(index >= 0 && index < InputCount());
-  // TODO(turbofan): Optimize this implementation!
-  AppendInput(zone, InputAt(InputCount() - 1));
-  for (int i = InputCount() - 1; i > index; --i) {
-    ReplaceInput(i, InputAt(i - 1));
-  }
-  ReplaceInput(index, to_insert);
-}
-
-inline void Node::RemoveInput(int index) {
-  DCHECK(index >= 0 && index < InputCount());
-  // TODO(turbofan): Optimize this implementation!
-  for (; index < InputCount() - 1; ++index) {
-    ReplaceInput(index, InputAt(index + 1));
-  }
-  TrimInputCount(InputCount() - 1);
-}
-
-inline void Node::AppendUse(Use* use) {
-  use->next = NULL;
-  use->prev = last_use_;
-  if (last_use_ == NULL) {
-    first_use_ = use;
-  } else {
-    last_use_->next = use;
-  }
-  last_use_ = use;
-}
-
-inline void Node::RemoveUse(Use* use) {
-  if (last_use_ == use) {
-    last_use_ = use->prev;
-  }
-  if (use->prev != NULL) {
-    use->prev->next = use->next;
-  } else {
-    first_use_ = use->next;
-  }
-  if (use->next != NULL) {
-    use->next->prev = use->prev;
-  }
-}
-
-inline bool Node::OwnedBy(Node* owner) const {
-  return first_use_ != NULL && first_use_->from == owner &&
-         first_use_->next == NULL;
+inline Node::Uses::const_iterator end(const Node::Uses& uses) {
+  return uses.end();
 }
 
 }  // namespace compiler

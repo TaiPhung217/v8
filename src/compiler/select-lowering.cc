@@ -5,81 +5,54 @@
 #include "src/compiler/select-lowering.h"
 
 #include "src/compiler/common-operator.h"
-#include "src/compiler/diamond.h"
-#include "src/compiler/graph.h"
+#include "src/compiler/graph-assembler.h"
 #include "src/compiler/node.h"
+#include "src/compiler/turbofan-graph.h"
 
 namespace v8 {
 namespace internal {
 namespace compiler {
 
-SelectLowering::SelectLowering(Graph* graph, CommonOperatorBuilder* common)
-    : common_(common),
-      graph_(graph),
-      merges_(Merges::key_compare(), Merges::allocator_type(graph->zone())) {}
+SelectLowering::SelectLowering(JSGraphAssembler* graph_assembler,
+                               TFGraph* graph)
+    : graph_assembler_(graph_assembler), start_(graph->start()) {}
 
-
-SelectLowering::~SelectLowering() {}
-
+SelectLowering::~SelectLowering() = default;
 
 Reduction SelectLowering::Reduce(Node* node) {
   if (node->opcode() != IrOpcode::kSelect) return NoChange();
+  return LowerSelect(node);
+}
+
+#define __ gasm()->
+
+Reduction SelectLowering::LowerSelect(Node* node) {
   SelectParameters const p = SelectParametersOf(node->op());
 
-  Node* cond = node->InputAt(0);
-  Node* vthen = node->InputAt(1);
-  Node* velse = node->InputAt(2);
-  Node* merge = nullptr;
+  Node* condition = node->InputAt(0);
+  Node* vtrue = node->InputAt(1);
+  Node* vfalse = node->InputAt(2);
 
-  // Check if we already have a diamond for this condition.
-  auto range = merges_.equal_range(cond);
-  for (auto i = range.first;; ++i) {
-    if (i == range.second) {
-      // Create a new diamond for this condition and remember its merge node.
-      Diamond d(graph(), common(), cond, p.hint());
-      merges_.insert(std::make_pair(cond, d.merge));
-      merge = d.merge;
-      break;
-    }
-
-    // If the diamond is reachable from the Select, merging them would result in
-    // an unschedulable graph, so we cannot reuse the diamond in that case.
-    merge = i->second;
-    if (!ReachableFrom(merge, node)) {
-      break;
-    }
+  bool reset_gasm = false;
+  if (gasm()->control() == nullptr) {
+    gasm()->InitializeEffectControl(start(), start());
+    reset_gasm = true;
   }
 
-  // Create a Phi hanging off the previously determined merge.
-  node->set_op(common()->Phi(p.type(), 2));
-  node->ReplaceInput(0, vthen);
-  node->ReplaceInput(1, velse);
-  node->ReplaceInput(2, merge);
-  return Changed(node);
-}
+  auto done = __ MakeLabel(p.representation());
 
+  __ GotoIf(condition, &done, vtrue);
+  __ Goto(&done, vfalse);
+  __ Bind(&done);
 
-bool SelectLowering::ReachableFrom(Node* const sink, Node* const source) {
-  // TODO(turbofan): This is probably horribly expensive, and it should be moved
-  // into node.h or somewhere else?!
-  Zone zone(graph()->zone()->isolate());
-  std::queue<Node*, NodeDeque> queue((NodeDeque(&zone)));
-  BoolVector visited(graph()->NodeCount(), false, &zone);
-  queue.push(source);
-  visited[source->id()] = true;
-  while (!queue.empty()) {
-    Node* current = queue.front();
-    if (current == sink) return true;
-    queue.pop();
-    for (auto input : current->inputs()) {
-      if (!visited[input->id()]) {
-        queue.push(input);
-        visited[input->id()] = true;
-      }
-    }
+  if (reset_gasm) {
+    gasm()->Reset();
   }
-  return false;
+
+  return Changed(done.PhiAt(0));
 }
+
+#undef __
 
 }  // namespace compiler
 }  // namespace internal
