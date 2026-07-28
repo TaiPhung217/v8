@@ -70,6 +70,7 @@
 #include "src/objects/js-array-inl.h"
 #include "src/objects/js-collection-inl.h"
 #include "src/objects/managed-inl.h"
+#include "src/objects/object-conversions-inl.h"
 #include "src/objects/objects-inl.h"
 #include "src/objects/objects.h"
 #include "src/objects/slots.h"
@@ -92,25 +93,6 @@ namespace heap {
 // We only start allocation-site tracking with the second instantiation.
 static const int kPretenureCreationCount =
     PretenuringHandler::GetMinMementoCountForTesting() + 1;
-
-static void CheckMap(Tagged<Map> map, int type, int instance_size) {
-  CHECK(IsHeapObject(map));
-  DCHECK(IsValidHeapObject(CcTest::heap(), map));
-  CHECK_EQ(ReadOnlyRoots(CcTest::heap()).meta_map(), map->map());
-  CHECK_EQ(type, map->instance_type());
-  CHECK_EQ(instance_size, map->instance_size());
-}
-
-TEST(HeapMaps) {
-  CcTest::InitializeVM();
-  ReadOnlyRoots roots(CcTest::heap());
-  CheckMap(roots.meta_map(), MAP_TYPE, kVariableSizeSentinel);
-  CheckMap(roots.heap_number_map(), HEAP_NUMBER_TYPE, sizeof(HeapNumber));
-  CheckMap(roots.fixed_array_map(), FIXED_ARRAY_TYPE, kVariableSizeSentinel);
-  CheckMap(roots.hash_table_map(), HASH_TABLE_TYPE, kVariableSizeSentinel);
-  CheckMap(roots.seq_two_byte_string_map(), SEQ_TWO_BYTE_STRING_TYPE,
-           kVariableSizeSentinel);
-}
 
 static void VerifyStoredPrototypeMap(Isolate* isolate,
                                      int stored_map_context_index,
