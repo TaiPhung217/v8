@@ -2,122 +2,84 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "src/execution/arguments-inl.h"
-#include "src/execution/isolate-inl.h"
-#include "src/heap/factory.h"
-#include "src/objects/js-proxy-inl.h"
-#include "src/objects/objects-inl.h"
+#include "src/v8.h"
+
+#include "src/arguments.h"
+#include "src/runtime/runtime-utils.h"
 
 namespace v8 {
 namespace internal {
 
-RUNTIME_FUNCTION(Runtime_IsJSProxy) {
-  SealHandleScope shs(isolate);
-  DCHECK_EQ(1, args.length());
-  Tagged<Object> obj = args[0];
-  return ReadOnlyRoots(isolate).boolean_value(IsJSProxy(obj));
+RUNTIME_FUNCTION(Runtime_CreateJSProxy) {
+  HandleScope scope(isolate);
+  DCHECK(args.length() == 2);
+  CONVERT_ARG_HANDLE_CHECKED(JSReceiver, handler, 0);
+  CONVERT_ARG_HANDLE_CHECKED(Object, prototype, 1);
+  if (!prototype->IsJSReceiver()) prototype = isolate->factory()->null_value();
+  return *isolate->factory()->NewJSProxy(handler, prototype);
 }
 
-RUNTIME_FUNCTION(Runtime_JSProxyGetHandler) {
+
+RUNTIME_FUNCTION(Runtime_CreateJSFunctionProxy) {
+  HandleScope scope(isolate);
+  DCHECK(args.length() == 4);
+  CONVERT_ARG_HANDLE_CHECKED(JSReceiver, handler, 0);
+  CONVERT_ARG_HANDLE_CHECKED(Object, call_trap, 1);
+  RUNTIME_ASSERT(call_trap->IsJSFunction() || call_trap->IsJSFunctionProxy());
+  CONVERT_ARG_HANDLE_CHECKED(JSFunction, construct_trap, 2);
+  CONVERT_ARG_HANDLE_CHECKED(Object, prototype, 3);
+  if (!prototype->IsJSReceiver()) prototype = isolate->factory()->null_value();
+  return *isolate->factory()->NewJSFunctionProxy(handler, call_trap,
+                                                 construct_trap, prototype);
+}
+
+
+RUNTIME_FUNCTION(RuntimeReference_IsJSProxy) {
   SealHandleScope shs(isolate);
-  DCHECK_EQ(1, args.length());
-  auto proxy = Cast<JSProxy>(args[0]);
+  DCHECK(args.length() == 1);
+  CONVERT_ARG_CHECKED(Object, obj, 0);
+  return isolate->heap()->ToBoolean(obj->IsJSProxy());
+}
+
+
+RUNTIME_FUNCTION(Runtime_IsJSFunctionProxy) {
+  SealHandleScope shs(isolate);
+  DCHECK(args.length() == 1);
+  CONVERT_ARG_HANDLE_CHECKED(Object, obj, 0);
+  return isolate->heap()->ToBoolean(obj->IsJSFunctionProxy());
+}
+
+
+RUNTIME_FUNCTION(Runtime_GetHandler) {
+  SealHandleScope shs(isolate);
+  DCHECK(args.length() == 1);
+  CONVERT_ARG_CHECKED(JSProxy, proxy, 0);
   return proxy->handler();
 }
 
-RUNTIME_FUNCTION(Runtime_JSProxyGetTarget) {
+
+RUNTIME_FUNCTION(Runtime_GetCallTrap) {
   SealHandleScope shs(isolate);
-  DCHECK_EQ(1, args.length());
-  auto proxy = Cast<JSProxy>(args[0]);
-  return proxy->target();
+  DCHECK(args.length() == 1);
+  CONVERT_ARG_CHECKED(JSFunctionProxy, proxy, 0);
+  return proxy->call_trap();
 }
 
-RUNTIME_FUNCTION(Runtime_GetPropertyWithReceiver) {
+
+RUNTIME_FUNCTION(Runtime_GetConstructTrap) {
+  SealHandleScope shs(isolate);
+  DCHECK(args.length() == 1);
+  CONVERT_ARG_CHECKED(JSFunctionProxy, proxy, 0);
+  return proxy->construct_trap();
+}
+
+
+RUNTIME_FUNCTION(Runtime_Fix) {
   HandleScope scope(isolate);
-
-  DCHECK_EQ(4, args.length());
-  DirectHandle<JSReceiver> holder = args.at<JSReceiver>(0);
-  Handle<Object> key = args.at(1);
-  DirectHandle<JSAny> receiver = args.at<JSAny>(2);
-  // TODO(mythria): Remove the on_non_existent parameter to this function. This
-  // should only be called when getting named properties on receiver. This
-  // doesn't handle the global variable loads.
-#ifdef DEBUG
-  int on_non_existent = args.smi_value_at(3);
-  DCHECK_NE(static_cast<OnNonExistent>(on_non_existent),
-            OnNonExistent::kThrowReferenceError);
-#endif
-
-  bool success = false;
-  PropertyKey lookup_key(isolate, key, &success);
-  if (!success) {
-    DCHECK(isolate->has_exception());
-    return ReadOnlyRoots(isolate).exception();
-  }
-  LookupIterator it(isolate, receiver, lookup_key, holder);
-
-  RETURN_RESULT_OR_FAILURE(isolate, Object::GetProperty(&it));
+  DCHECK(args.length() == 1);
+  CONVERT_ARG_HANDLE_CHECKED(JSProxy, proxy, 0);
+  JSProxy::Fix(proxy);
+  return isolate->heap()->undefined_value();
 }
-
-RUNTIME_FUNCTION(Runtime_SetPropertyWithReceiver) {
-  HandleScope scope(isolate);
-
-  DCHECK_EQ(4, args.length());
-  DirectHandle<JSReceiver> holder = args.at<JSReceiver>(0);
-  Handle<Object> key = args.at(1);
-  DirectHandle<Object> value = args.at(2);
-  DirectHandle<JSAny> receiver = args.at<JSAny>(3);
-
-  bool success = false;
-  PropertyKey lookup_key(isolate, key, &success);
-  if (!success) {
-    DCHECK(isolate->has_exception());
-    return ReadOnlyRoots(isolate).exception();
-  }
-  LookupIterator it(isolate, receiver, lookup_key, holder);
-  Maybe<bool> result =
-      Object::SetSuperProperty(&it, value, StoreOrigin::kMaybeKeyed);
-  MAYBE_RETURN(result, ReadOnlyRoots(isolate).exception());
-  return *isolate->factory()->ToBoolean(result.FromJust());
 }
-
-RUNTIME_FUNCTION(Runtime_CheckProxyGetSetTrapResult) {
-  HandleScope scope(isolate);
-
-  DCHECK_EQ(4, args.length());
-  DirectHandle<Name> name = args.at<Name>(0);
-  DirectHandle<JSReceiver> target = args.at<JSReceiver>(1);
-  DirectHandle<Object> trap_result = args.at(2);
-  int64_t access_kind = NumberToInt64(args[3]);
-
-  RETURN_RESULT_OR_FAILURE(isolate, JSProxy::CheckGetSetTrapResult(
-                                        isolate, name, target, trap_result,
-                                        JSProxy::AccessKind(access_kind)));
-}
-
-RUNTIME_FUNCTION(Runtime_CheckProxyHasTrapResult) {
-  HandleScope scope(isolate);
-
-  DCHECK_EQ(2, args.length());
-  DirectHandle<Name> name = args.at<Name>(0);
-  DirectHandle<JSReceiver> target = args.at<JSReceiver>(1);
-
-  Maybe<bool> result = JSProxy::CheckHasTrap(isolate, name, target);
-  if (!result.IsJust()) return ReadOnlyRoots(isolate).exception();
-  return ReadOnlyRoots(isolate).boolean_value(result.FromJust());
-}
-
-RUNTIME_FUNCTION(Runtime_CheckProxyDeleteTrapResult) {
-  HandleScope scope(isolate);
-
-  DCHECK_EQ(2, args.length());
-  DirectHandle<Name> name = args.at<Name>(0);
-  DirectHandle<JSReceiver> target = args.at<JSReceiver>(1);
-
-  Maybe<bool> result = JSProxy::CheckDeleteTrap(isolate, name, target);
-  if (!result.IsJust()) return ReadOnlyRoots(isolate).exception();
-  return ReadOnlyRoots(isolate).boolean_value(result.FromJust());
-}
-
-}  // namespace internal
-}  // namespace v8
+}  // namespace v8::internal

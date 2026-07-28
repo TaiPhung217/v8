@@ -2,64 +2,99 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "src/execution/arguments-inl.h"
-#include "src/execution/isolate-inl.h"
-#include "src/objects/objects-inl.h"
-#include "src/roots/roots-inl.h"
-#include "src/strings/string-builder-inl.h"
+#include "src/v8.h"
+
+#include "src/arguments.h"
+#include "src/runtime/runtime-utils.h"
 
 namespace v8 {
 namespace internal {
 
+RUNTIME_FUNCTION(Runtime_CreateSymbol) {
+  HandleScope scope(isolate);
+  DCHECK(args.length() == 1);
+  CONVERT_ARG_HANDLE_CHECKED(Object, name, 0);
+  RUNTIME_ASSERT(name->IsString() || name->IsUndefined());
+  Handle<Symbol> symbol = isolate->factory()->NewSymbol();
+  if (name->IsString()) symbol->set_name(*name);
+  return *symbol;
+}
+
+
 RUNTIME_FUNCTION(Runtime_CreatePrivateSymbol) {
   HandleScope scope(isolate);
-  DCHECK_GE(1, args.length());
-  DirectHandle<Symbol> symbol = isolate->factory()->NewPrivateSymbol();
-  if (args.length() == 1) {
-    DirectHandle<Object> description = args.at(0);
-    CHECK(IsString(*description) || IsUndefined(*description));
-    if (IsString(*description)) {
-      symbol->set_description(Cast<String>(*description));
-    }
+  DCHECK(args.length() == 1);
+  CONVERT_ARG_HANDLE_CHECKED(Object, name, 0);
+  RUNTIME_ASSERT(name->IsString() || name->IsUndefined());
+  Handle<Symbol> symbol = isolate->factory()->NewPrivateSymbol();
+  if (name->IsString()) symbol->set_name(*name);
+  return *symbol;
+}
+
+
+RUNTIME_FUNCTION(Runtime_CreatePrivateOwnSymbol) {
+  HandleScope scope(isolate);
+  DCHECK(args.length() == 1);
+  CONVERT_ARG_HANDLE_CHECKED(Object, name, 0);
+  RUNTIME_ASSERT(name->IsString() || name->IsUndefined());
+  Handle<Symbol> symbol = isolate->factory()->NewPrivateOwnSymbol();
+  if (name->IsString()) symbol->set_name(*name);
+  return *symbol;
+}
+
+
+RUNTIME_FUNCTION(Runtime_CreateGlobalPrivateOwnSymbol) {
+  HandleScope scope(isolate);
+  DCHECK(args.length() == 1);
+  CONVERT_ARG_HANDLE_CHECKED(String, name, 0);
+  Handle<JSObject> registry = isolate->GetSymbolRegistry();
+  Handle<String> part = isolate->factory()->private_intern_string();
+  Handle<Object> privates;
+  ASSIGN_RETURN_FAILURE_ON_EXCEPTION(
+      isolate, privates, Object::GetPropertyOrElement(registry, part));
+  Handle<Object> symbol;
+  ASSIGN_RETURN_FAILURE_ON_EXCEPTION(
+      isolate, symbol, Object::GetPropertyOrElement(privates, name));
+  if (!symbol->IsSymbol()) {
+    DCHECK(symbol->IsUndefined());
+    symbol = isolate->factory()->NewPrivateSymbol();
+    Handle<Symbol>::cast(symbol)->set_name(*name);
+    Handle<Symbol>::cast(symbol)->set_is_own(true);
+    JSObject::SetProperty(Handle<JSObject>::cast(privates), name, symbol,
+                          STRICT).Assert();
   }
   return *symbol;
 }
 
-RUNTIME_FUNCTION(Runtime_CreatePrivateBrandSymbol) {
+
+RUNTIME_FUNCTION(Runtime_NewSymbolWrapper) {
   HandleScope scope(isolate);
-  DCHECK_EQ(1, args.length());
-  DirectHandle<String> name = args.at<String>(0);
-  DirectHandle<Symbol> symbol = isolate->factory()->NewPrivateBrandSymbol(name);
-  return *symbol;
+  DCHECK(args.length() == 1);
+  CONVERT_ARG_HANDLE_CHECKED(Symbol, symbol, 0);
+  return *Object::ToObject(isolate, symbol).ToHandleChecked();
 }
 
-RUNTIME_FUNCTION(Runtime_CreatePrivateNameSymbol) {
-  HandleScope scope(isolate);
-  DCHECK_EQ(1, args.length());
-  DirectHandle<String> name = args.at<String>(0);
-  DirectHandle<Symbol> symbol = isolate->factory()->NewPrivateNameSymbol(name);
-  return *symbol;
+
+RUNTIME_FUNCTION(Runtime_SymbolDescription) {
+  SealHandleScope shs(isolate);
+  DCHECK(args.length() == 1);
+  CONVERT_ARG_CHECKED(Symbol, symbol, 0);
+  return symbol->name();
 }
 
-RUNTIME_FUNCTION(Runtime_SymbolDescriptiveString) {
+
+RUNTIME_FUNCTION(Runtime_SymbolRegistry) {
   HandleScope scope(isolate);
-  DCHECK_EQ(1, args.length());
-  DirectHandle<Symbol> symbol = args.at<Symbol>(0);
-  IncrementalStringBuilder builder(isolate);
-  builder.AppendCStringLiteral("Symbol(");
-  if (IsString(symbol->description())) {
-    builder.AppendString(
-        direct_handle(Cast<String>(symbol->description()), isolate));
-  }
-  builder.AppendCharacter(')');
-  RETURN_RESULT_OR_FAILURE(isolate, builder.Finish());
+  DCHECK(args.length() == 0);
+  return *isolate->GetSymbolRegistry();
 }
+
 
 RUNTIME_FUNCTION(Runtime_SymbolIsPrivate) {
   SealHandleScope shs(isolate);
-  DCHECK_EQ(1, args.length());
-  auto symbol = Cast<Symbol>(args[0]);
-  return ReadOnlyRoots(isolate).boolean_value(symbol->is_any_private());
+  DCHECK(args.length() == 1);
+  CONVERT_ARG_CHECKED(Symbol, symbol, 0);
+  return isolate->heap()->ToBoolean(symbol->is_private());
 }
-}  // namespace internal
-}  // namespace v8
+}
+}  // namespace v8::internal
