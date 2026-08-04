@@ -1192,6 +1192,7 @@
   # Case-insensitive unicode regexp relies on case mapping provided by ICU.
   'es6/unicode-regexp-ignore-case': [FAIL],
   'es7/regexp-ui-word': [FAIL],
+  'regexp/first-character-reject-bitset': [FAIL],
   'regress/regress-5036': [FAIL],
 
   # Desugaring regexp property class relies on ICU. Anything goes as long as we
@@ -3504,4 +3505,11 @@
   'compiler/concurrent-string-ext-seq': [SKIP],
   'regress/regress-511263221': [SKIP],
 }],  # not test_only_sync_points
+
+##############################################################################
+['not sandbox', {
+  # Requires V8 sandbox to be enabled (relies on external pointer table index layout
+  # and fails in-place externalization without sandbox on 64-bit pointer compression builds).
+  'regress/regress-539212794': [SKIP],
+}],  # not sandbox
 ]

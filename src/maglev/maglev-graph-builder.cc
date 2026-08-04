@@ -113,9 +113,9 @@ class FunctionContextSpecialization final : public AllStatic {
   }
 };
 
-NodeType NodeTypeFromAccessInfo(
-    compiler::JSHeapBroker* broker,
-    const compiler::PropertyAccessInfo& access_info) {
+NodeType NodeTypeFromAccessInfo(compiler::JSHeapBroker* broker,
+                                const compiler::PropertyAccessInfo& access_info,
+                                compiler::OptionalMapRef stable_field_map) {
   if (access_info.field_representation().IsSmi()) {
     return NodeType::kSmi;
   }
@@ -124,8 +124,8 @@ NodeType NodeTypeFromAccessInfo(
     return NodeType::kHeapNumber;
   }
 
-  if (access_info.field_map().has_value()) {
-    return StaticTypeForMap(access_info.field_map().value(), broker);
+  if (stable_field_map.has_value()) {
+    return StaticTypeForMap(stable_field_map.value(), broker);
   }
 
   const auto type = access_info.field_type();
@@ -4466,13 +4466,14 @@ ReduceResult MaglevGraphBuilder::BuildLoadField(
         {heap_number}, static_cast<int>(offsetof(HeapNumber, value_)));
   }
 
-  const auto node_type = NodeTypeFromAccessInfo(this->broker(), access_info);
   compiler::OptionalMapRef stable_field_map;
   if (access_info.field_representation().IsHeapObject() &&
       access_info.field_map().has_value() &&
       access_info.field_map().value().is_stable()) {
     stable_field_map = access_info.field_map();
   }
+  const auto node_type =
+      NodeTypeFromAccessInfo(this->broker(), access_info, stable_field_map);
   ValueNode* value;
   GET_VALUE_OR_ABORT(
       value, BuildLoadTaggedField(load_source, field_index.offset(), node_type,
@@ -8465,10 +8466,14 @@ MaybeReduceResult MaglevGraphBuilder::TryReduceGeneratorPrototypeNext(
     compiler::JSFunctionRef target, CallArguments& args) {
   if (!CanSpeculateCall()) return {};
 
+  // Don't inline Generator.prototype.next across native contexts.
+  if (target.native_context(broker()) != broker()->target_native_context()) {
+    return {};
+  }
+
   ValueNode* receiver = args.receiver();
   if (!receiver) return {};
 
-  // The following is to rule out cross-realm generator next inlining.
   MapInference inference(this, receiver);
   auto possible_maps = inference.TryGetPossibleMaps();
   bool can_use_static_maps = false;
@@ -8482,9 +8487,7 @@ MaybeReduceResult MaglevGraphBuilder::TryReduceGeneratorPrototypeNext(
       compiler::OptionalObjectRef ctor = map.GetConstructor(broker());
       if (!ctor.has_value() || !ctor->IsJSFunction() ||
           !ctor->AsJSFunction().native_context(broker()).equals(
-              target.native_context(broker())) ||
-          !target.native_context(broker()).equals(
-              broker()->target_native_context())) {
+              target.native_context(broker()))) {
         return {};
       }
     }
@@ -17290,13 +17293,6 @@ void MaglevGraphBuilder::AttachExceptionHandlerInfo(NodeBase* node) {
           ExceptionHandlerInfo(ExceptionHandlerInfo::kLazyDeopt);
       DCHECK(node->exception_handler_info()->HasExceptionHandler());
       DCHECK(node->exception_handler_info()->ShouldLazyDeopt());
-      if (node->Is<CallKnownJSFunction>()) {
-        if (flags_.is_non_eager_inlining_enabled) {
-          // Ensure that we always have the handler of inline call
-          // candidates.
-          current_block()->AddExceptionHandler(node->exception_handler_info());
-        }
-      }
       return;
     }
 
@@ -17318,8 +17314,6 @@ void MaglevGraphBuilder::AttachExceptionHandlerInfo(NodeBase* node) {
     DCHECK(node->exception_handler_info()->HasExceptionHandler());
     DCHECK(!node->exception_handler_info()->ShouldLazyDeopt());
 
-    current_block()->AddExceptionHandler(node->exception_handler_info());
-
     if (MaglevGraphBuilder* handler = catch_block.handler_builder) {
       // Merge the current state into the handler state.
       handler->GetCatchBlockFrameState()->MergeThrow(
@@ -17333,12 +17327,6 @@ void MaglevGraphBuilder::AttachExceptionHandlerInfo(NodeBase* node) {
     // case.
     new (node->exception_handler_info()) ExceptionHandlerInfo();
     DCHECK(!node->exception_handler_info()->HasExceptionHandler());
-    if (node->Is<CallKnownJSFunction>()) {
-      if (flags_.is_non_eager_inlining_enabled) {
-        // Ensure that we always have the handler of inline call candidates.
-        current_block()->AddExceptionHandler(node->exception_handler_info());
-      }
-    }
   }
 }
 
