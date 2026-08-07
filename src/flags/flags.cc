@@ -1341,6 +1341,11 @@ void FlagList::ResolveContradictionsWhenFuzzing() {
   CONTRADICTION(always_osr_from_maglev, lite_mode);
   CONTRADICTION(always_osr_from_maglev, turbofan);
   CONTRADICTION(always_osr_from_maglev, turboshaft);
+  CONTRADICTION(osr_from_maglev, disable_optimizing_compilers);
+  CONTRADICTION(osr_from_maglev, jitless);
+  CONTRADICTION(osr_from_maglev, lite_mode);
+  CONTRADICTION(osr_from_maglev, turbofan);
+  CONTRADICTION(osr_from_maglev, turboshaft);
   CONTRADICTION(assert_types, stress_concurrent_inlining);
   CONTRADICTION(assert_types, stress_concurrent_inlining_attach_code);
   CONTRADICTION(disable_optimizing_compilers, maglev_future);
@@ -1456,6 +1461,21 @@ void FlagList::ResolveContradictionsWhenFuzzing() {
   if (v8_flags.turbofan && !v8_flags.turbolev) {
     RESET_WHEN_FUZZING(array_destructure_bytecode);
   }
+
+#if V8_ENABLE_WEBASSEMBLY
+  if (v8_flags.wasm_max_code_space_size_mb > kDefaultMaxWasmCodeSpaceSizeMb) {
+    // Skip the warning on correctness (differential) fuzzing to prevent false
+    // positives.
+    if (!v8_flags.correctness_fuzzer_suppressions) {
+      std::cerr << "Warning: lowering flag --wasm-max-code-space-size-mb="
+                << v8_flags.wasm_max_code_space_size_mb
+                << " to --wasm-max-code-space-size-mb="
+                << kDefaultMaxWasmCodeSpaceSizeMb
+                << ", larger values are unsupported";
+    }
+    v8_flags.wasm_max_code_space_size_mb = kDefaultMaxWasmCodeSpaceSizeMb;
+  }
+#endif
 
   for (auto [flag1, flag2] : contradictions) {
     if (!flag1 || !flag2) continue;

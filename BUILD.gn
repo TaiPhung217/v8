@@ -71,6 +71,13 @@ declare_args() {
   # Enable compiler warnings when using V8_DEPRECATED apis.
   v8_deprecation_warnings = true
 
+  # Check that executing JavaScript inside API interrupt callbacks is
+  # disallowed.
+  # TODO(40067940): Ensure this does not break DevTools.
+  # TODO(node): Upstream issue https://github.com/nodejs/node/pull/65028
+  v8_disallow_js_in_api_interrupts_is_checked =
+      !(defined(build_with_node) && build_with_node)
+
   # Enable compiler warnings when using V8_DEPRECATE_SOON apis.
   v8_imminent_deprecation_warnings = true
 
@@ -1062,6 +1069,7 @@ external_v8_defines = [
   "V8_COMPRESS_ZONES",
   "V8_ENABLE_SANDBOX",
   "V8_DEPRECATION_WARNINGS",
+  "V8_DISALLOW_JS_IN_API_INTERRUPTS_IS_CHECKED",
   "V8_IMMINENT_DEPRECATION_WARNINGS",
   "V8_USE_PERFETTO",
   "V8_USE_PERFETTO_JSON_EXPORT",
@@ -1112,6 +1120,10 @@ if (v8_enable_sandbox) {
 }
 if (v8_deprecation_warnings) {
   enabled_external_v8_defines += [ "V8_DEPRECATION_WARNINGS" ]
+}
+if (v8_disallow_js_in_api_interrupts_is_checked) {
+  enabled_external_v8_defines +=
+      [ "V8_DISALLOW_JS_IN_API_INTERRUPTS_IS_CHECKED" ]
 }
 if (v8_imminent_deprecation_warnings) {
   enabled_external_v8_defines += [ "V8_IMMINENT_DEPRECATION_WARNINGS" ]
@@ -2327,6 +2339,7 @@ torque_files = [
   "src/objects/js-struct.tq",
   "src/objects/js-weak-refs.tq",
   "src/objects/literal-objects.tq",
+  "src/objects/managed.tq",
   "src/objects/map.tq",
   "src/objects/megadom-handler.tq",
   "src/objects/microtask.tq",
@@ -3222,6 +3235,8 @@ generated_file("v8_generate_features_json") {
   output_conversion = "json"
   contents = {
     v8_deprecation_warnings = v8_deprecation_warnings
+    v8_disallow_js_in_api_interrupts_is_checked =
+        v8_disallow_js_in_api_interrupts_is_checked
     v8_enable_31bit_smis_on_64bit_arch = v8_enable_31bit_smis_on_64bit_arch
     v8_enable_direct_handle = v8_enable_direct_handle
     v8_enable_extensible_ro_snapshot = v8_enable_extensible_ro_snapshot
@@ -4465,6 +4480,7 @@ v8_header_set("v8_internal_headers") {
     "src/objects/lookup-inl.h",
     "src/objects/lookup.h",
     "src/objects/managed-inl.h",
+    "src/objects/managed-type-id.h",
     "src/objects/managed.h",
     "src/objects/map-inl.h",
     "src/objects/map-updater.h",

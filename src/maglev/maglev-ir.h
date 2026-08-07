@@ -469,7 +469,6 @@ class ExceptionHandlerInfo;
   V(MajorGCForCompilerTesting)                \
   V(FunctionEntryStackCheck)                  \
   V(GeneratorStore)                           \
-  V(TryOnStackReplacement)                    \
   V(StoreMap)                                 \
   V(StoreFixedArrayElementWithWriteBarrier)   \
   V(StoreFixedArrayElementNoWriteBarrier)     \
@@ -563,7 +562,7 @@ static constexpr Opcode kFirstOpcode = static_cast<Opcode>(0);
 static constexpr Opcode kLastOpcode = static_cast<Opcode>(kOpcodeCount - 1);
 #undef PLUS_ONE
 
-const char* OpcodeToString(Opcode opcode);
+V8_EXPORT_PRIVATE const char* OpcodeToString(Opcode opcode);
 inline std::ostream& operator<<(std::ostream& os, Opcode opcode) {
   return os << OpcodeToString(opcode);
 }
@@ -3269,7 +3268,7 @@ class DeadValue : public FixedInputValueNodeT<0, DeadValue> {
 };
 
 template <class Derived, Operation kOperation>
-class UnaryWithFeedbackNode : public FixedInputValueNodeT<1, Derived> {
+class UnaryWithEmbeddedFeedbackNode : public FixedInputValueNodeT<1, Derived> {
   using Base = FixedInputValueNodeT<1, Derived>;
 
  public:
@@ -3277,17 +3276,17 @@ class UnaryWithFeedbackNode : public FixedInputValueNodeT<1, Derived> {
   static constexpr OpProperties kProperties = OpProperties::JSCall();
   DECLARE_UNOP(Tagged)
 
-  compiler::FeedbackSource feedback() const { return feedback_; }
+  compiler::EmbeddedFeedbackSource feedback() const { return feedback_; }
 
  protected:
-  explicit UnaryWithFeedbackNode(uint64_t bitfield,
-                                 const compiler::FeedbackSource& feedback)
+  explicit UnaryWithEmbeddedFeedbackNode(
+      uint64_t bitfield, const compiler::EmbeddedFeedbackSource& feedback)
       : Base(bitfield), feedback_(feedback) {}
 
   void SetValueLocationConstraints();
   void GenerateCode(MaglevAssembler*, const ProcessingState&);
 
-  const compiler::FeedbackSource feedback_;
+  const compiler::EmbeddedFeedbackSource feedback_;
 };
 
 template <class Derived, Operation kOperation>
@@ -3312,18 +3311,6 @@ class BinaryWithEmbeddedFeedbackNode : public FixedInputValueNodeT<2, Derived> {
   const compiler::EmbeddedFeedbackSource feedback_;
 };
 
-#define DEF_OPERATION_WITH_FEEDBACK_NODE(Name, Super, OpName)         \
-  class Name : public Super<Name, Operation::k##OpName> {             \
-    using Base = Super<Name, Operation::k##OpName>;                   \
-                                                                      \
-   public:                                                            \
-    Name(uint64_t bitfield, const compiler::FeedbackSource& feedback) \
-        : Base(bitfield, feedback) {}                                 \
-    int MaxCallStackArgs() const { return 0; }                        \
-    void SetValueLocationConstraints();                               \
-    void GenerateCode(MaglevAssembler*, const ProcessingState&);      \
-  };
-
 #define DEF_OPERATION_WITH_EMBEDDED_FEEDBACK_NODE(Name, Super, OpName)        \
   class Name : public Super<Name, Operation::k##OpName> {                     \
     using Base = Super<Name, Operation::k##OpName>;                           \
@@ -3336,8 +3323,9 @@ class BinaryWithEmbeddedFeedbackNode : public FixedInputValueNodeT<2, Derived> {
     void GenerateCode(MaglevAssembler*, const ProcessingState&);              \
   };
 
-#define DEF_UNARY_WITH_FEEDBACK_NODE(Name) \
-  DEF_OPERATION_WITH_FEEDBACK_NODE(Generic##Name, UnaryWithFeedbackNode, Name)
+#define DEF_UNARY_WITH_FEEDBACK_NODE(Name)   \
+  DEF_OPERATION_WITH_EMBEDDED_FEEDBACK_NODE( \
+      Generic##Name, UnaryWithEmbeddedFeedbackNode, Name)
 #define DEF_BINARY_WITH_EMBEDDED_FEEDBACK_NODE(Name) \
   DEF_OPERATION_WITH_EMBEDDED_FEEDBACK_NODE(         \
       Generic##Name, BinaryWithEmbeddedFeedbackNode, Name)
@@ -3348,7 +3336,6 @@ COMPARISON_OPERATION_LIST(DEF_BINARY_WITH_EMBEDDED_FEEDBACK_NODE)
 
 #undef DEF_UNARY_WITH_FEEDBACK_NODE
 #undef DEF_BINARY_WITH_EMBEDDED_FEEDBACK_NODE
-#undef DEF_OPERATION_WITH_FEEDBACK_NODE
 #undef DEF_OPERATION_WITH_EMBEDDED_FEEDBACK_NODE
 
 // Number of bits needed to encode an Operation in a node's bitfield.
@@ -5108,40 +5095,6 @@ class GeneratorStore : public VarargsNodeT<2, GeneratorStore> {
  private:
   const int suspend_id_;
   const int bytecode_offset_;
-};
-
-class TryOnStackReplacement : public FixedInputNodeT<1, TryOnStackReplacement> {
- public:
-  explicit TryOnStackReplacement(uint64_t bitfield, int32_t loop_depth,
-                                 FeedbackSlot feedback_slot,
-                                 BytecodeOffset osr_offset,
-                                 MaglevCompilationUnit* unit)
-      : Base(bitfield),
-        loop_depth_(loop_depth),
-        feedback_slot_(feedback_slot),
-        osr_offset_(osr_offset),
-        unit_(unit) {}
-
-  static constexpr OpProperties kProperties =
-      OpProperties::DeferredCall() | OpProperties::EagerDeopt() |
-      OpProperties::CanAllocate() | OpProperties::NotIdempotent();
-  DECLARE_INPUTS(Closure)
-  DECLARE_INPUT_TYPES(Tagged)
-
-  Input closure() { return Node::input(0); }
-
-  const MaglevCompilationUnit* unit() const { return unit_; }
-
-  int MaxCallStackArgs() const;
-  void SetValueLocationConstraints();
-  void GenerateCode(MaglevAssembler*, const ProcessingState&);
-
- private:
-  // For OSR.
-  const int32_t loop_depth_;
-  const FeedbackSlot feedback_slot_;
-  const BytecodeOffset osr_offset_;
-  MaglevCompilationUnit* const unit_;
 };
 
 class ForInPrepare : public FixedInputValueNodeT<2, ForInPrepare> {
@@ -11171,9 +11124,17 @@ class HandleNoHeapWritesInterrupt
 class ReduceInterruptBudgetForLoop
     : public FixedInputNodeT<1, ReduceInterruptBudgetForLoop> {
  public:
-  explicit ReduceInterruptBudgetForLoop(uint64_t bitfield, int amount)
-      : Base(bitfield), amount_(amount) {
+  explicit ReduceInterruptBudgetForLoop(uint64_t bitfield, int amount,
+                                        BytecodeOffset osr_offset,
+                                        int loop_depth,
+                                        FeedbackSlot feedback_slot)
+      : Base(bitfield),
+        amount_(amount),
+        osr_offset_(osr_offset),
+        loop_depth_(loop_depth),
+        feedback_slot_(feedback_slot) {
     DCHECK_GT(amount, 0);
+    DCHECK_EQ(osr_offset == BytecodeOffset::None(), !try_osr());
   }
 
   DECLARE_INPUTS(FeedbackCell)
@@ -11181,9 +11142,14 @@ class ReduceInterruptBudgetForLoop
 
   static constexpr OpProperties kProperties =
       OpProperties::DeferredCall() | OpProperties::CanAllocate() |
-      OpProperties::LazyDeopt() | OpProperties::NotIdempotent();
+      OpProperties::LazyDeopt() | OpProperties::EagerDeopt() |
+      OpProperties::NotIdempotent();
 
   int amount() const { return amount_; }
+  BytecodeOffset osr_offset() const { return osr_offset_; }
+  int loop_depth() const { return loop_depth_; }
+  FeedbackSlot feedback_slot() const { return feedback_slot_; }
+  bool try_osr() const { return !feedback_slot_.IsInvalid(); }
 
   int MaxCallStackArgs() const;
   void SetValueLocationConstraints();
@@ -11192,6 +11158,9 @@ class ReduceInterruptBudgetForLoop
 
  private:
   const int amount_;
+  const BytecodeOffset osr_offset_;
+  const int loop_depth_;
+  const FeedbackSlot feedback_slot_;
 };
 
 class ReduceInterruptBudgetForReturn

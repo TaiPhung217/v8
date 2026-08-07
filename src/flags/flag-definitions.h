@@ -352,7 +352,6 @@ DEFINE_BOOL(js_shipping, true, "enable all shipped JavaScript features")
 #define JAVASCRIPT_STAGED_FEATURES_BASE(V)             \
   V(js_iterator_join, "Iterator.prototype.join")       \
   V(js_immutable_arraybuffer, "Immutable ArrayBuffer") \
-  V(js_joint_iteration, "joint iteration")             \
   V(js_import_text, "import text")                     \
   V(js_import_bytes, "import bytes")                   \
   V(js_defer_import_eval, "defer import eval")         \
@@ -387,7 +386,8 @@ DEFINE_BOOL(js_shipping, true, "enable all shipped JavaScript features")
     "(https://github.com/tc39/ecma262/pull/3715)")                           \
   V(js_upsert, "upsert")                                                     \
   V(js_iterator_sequencing, "iterator sequencing")                           \
-  V(js_sum_precise, "Math.sumPrecise")
+  V(js_sum_precise, "Math.sumPrecise")                                       \
+  V(js_joint_iteration, "joint iteration")
 
 #ifdef V8_INTL_SUPPORT
 #define HARMONY_SHIPPING(V) HARMONY_SHIPPING_BASE(V)
@@ -434,6 +434,9 @@ DEFINE_NEG_NEG_IMPLICATION(harmony_shipping, js_shipping)
 #undef FLAG_SHIPPING_FEATURES
 
 DEFINE_IMPLICATION(js_import_bytes, js_immutable_arraybuffer)
+
+DEFINE_BOOL(js_postmessage_share_immutable_arraybuffer, true,
+            "share immutable array buffers in postMessage instead of copying")
 
 DEFINE_BOOL(builtin_subclassing, true,
             "subclassing support in built-in methods")
@@ -890,20 +893,29 @@ DEFINE_WEAK_IMPLICATION(future, flush_baseline_code)
 
 
 #ifdef V8_TARGET_ARCH_64_BIT
-DEFINE_BOOL(additive_safe_int_feedback, false,
-            "Enable the use of AdditiveSafeInteger feedback")
+DEFINE_BOOL(additive_safe_int_feedback, true,
+            "Record AdditiveSafeInteger feedback")
 DEFINE_BOOL(turbolev_additive_safe_int_feedback, true,
             "Enable the use of AdditiveSafeInteger feedback for Turbolev")
+DEFINE_EXPERIMENTAL_FEATURE(
+    turbofan_additive_safe_int_feedback,
+    "enable the use of AdditiveSafeInteger feedback for TurboFan")
 
 // Additive safe ints are only used by TurboFan or Turbolev.
 DEFINE_NEG_IMPLICATION(jitless, additive_safe_int_feedback)
 DEFINE_NEG_IMPLICATION(disable_optimizing_compilers, additive_safe_int_feedback)
+DEFINE_NEG_IMPLICATION(jitless, turbofan_additive_safe_int_feedback)
+DEFINE_NEG_IMPLICATION(disable_optimizing_compilers,
+                       turbofan_additive_safe_int_feedback)
 #else
 DEFINE_BOOL_READONLY(additive_safe_int_feedback, false,
-                     "Enable the use of AdditiveSafeInteger feedback")
+                     "Record AdditiveSafeInteger feedback")
 DEFINE_BOOL_READONLY(
     turbolev_additive_safe_int_feedback, false,
     "Enable the use of AdditiveSafeInteger feedback for Turbolev")
+DEFINE_BOOL_READONLY(
+    turbofan_additive_safe_int_feedback, false,
+    "Enable the use of AdditiveSafeInteger feedback for TurboFan")
 #endif  // V8_TARGET_ARCH_64_BIT
 
 DEFINE_BOOL(
@@ -1177,20 +1189,23 @@ DEFINE_INT(invocation_count_for_maglev, 400,
 #endif  // ANDROID
 DEFINE_INT(invocation_count_for_maglev_osr, 100,
            "invocation count required for maglev OSR")
-DEFINE_BOOL(osr_from_maglev, false,
-            "whether we try to OSR to Turbofan from OSR'd Maglev")
+DEFINE_INT(osr_from_maglev, 3,
+           "bitset mode for OSR from Maglev to Turbofan (0=off, 1=on OSR "
+           "compile, 2=if loop was OSR'd, 4=always)")
 DEFINE_FLOAT(
     osr_from_maglev_interrupt_scale_factor, 0.8,
     "Scale interrupt budget reduction for OSR from Maglev vs. OSR to Maglev")
 DEFINE_BOOL(always_osr_from_maglev, false,
-            "whether we try to OSR to Turbofan from any Maglev")
-DEFINE_WEAK_IMPLICATION(turbolev, always_osr_from_maglev)
-DEFINE_WEAK_IMPLICATION(always_osr_from_maglev, osr_from_maglev)
+            "whether we try to OSR to Turbofan from any Maglev (alias for "
+            "--osr-from-maglev=4)")
+DEFINE_VALUE_IMPLICATION(always_osr_from_maglev, osr_from_maglev, 4)
 
 // Tiering: Turbofan.
 DEFINE_INT(invocation_count_for_turbofan, 3000,
            "invocation count required for optimizing with TurboFan")
 DEFINE_INT(invocation_count_for_osr, 500, "invocation count required for OSR")
+DEFINE_FLOAT(invocation_count_for_osr_factor_while_tiering_in_progress, 3.0,
+             "invocation count factor while waiting for code to compile")
 DEFINE_UINT(osr_to_tierup, 1,
             "number to decrease the invocation budget by when we follow OSR")
 DEFINE_INT(minimum_invocations_after_ic_update, 500,
@@ -1223,8 +1238,10 @@ DEFINE_VALUE_IMPLICATION(jit_fuzzing, minimum_invocations_after_ic_update, 5)
 
 #if V8_ENABLE_WEBASSEMBLY
 // Wasm tiering thresholds.
-DEFINE_VALUE_IMPLICATION(jit_fuzzing, wasm_wrapper_tiering_budget, 1)
-DEFINE_VALUE_IMPLICATION(jit_fuzzing, wasm_tiering_budget, 1)
+DEFINE_VALUE_IMPLICATION(jit_fuzzing,
+  wasm_wrapper_tiering_budget, 1)
+DEFINE_VALUE_IMPLICATION(jit_fuzzing,
+  wasm_tiering_budget, 1)
 DEFINE_IMPLICATION(jit_fuzzing, wasm_inlining_ignore_call_counts)
 #endif  // V8_ENABLE_WEBASSEMBLY
 
@@ -1641,9 +1658,10 @@ DEFINE_INT(max_turbolev_eager_inlined_bytecode_size, 30,
            "maximum size of bytecode considered for eager inlining")
 
 // When using maglev as OSR target allow us to tier up further
-DEFINE_WEAK_VALUE_IMPLICATION(maglev_osr, osr_from_maglev, true)
+DEFINE_WEAK_VALUE_IMPLICATION(maglev_osr, osr_from_maglev, 2)
 DEFINE_VALUE_IMPLICATION(!use_osr, maglev_osr, false)
-DEFINE_VALUE_IMPLICATION(!turbofan, osr_from_maglev, false)
+DEFINE_VALUE_IMPLICATION(!turbofan, osr_from_maglev, 0)
+DEFINE_VALUE_IMPLICATION(!turbofan, always_osr_from_maglev, false)
 DEFINE_BOOL(concurrent_osr, true, "enable concurrent OSR")
 
 DEFINE_INT(maglev_allocation_folding, 2, "maglev allocation folding level")
@@ -1824,8 +1842,8 @@ DEFINE_BOOL(turboshaft_string_concat_escape_analysis, true,
 DEFINE_BOOL(turboshaft_trusted_load_elimination, true,
             "enable Turboshaft's low level load elimination for trusted loads "
             "(JS and Wasm)")
-DEFINE_IMPLICATION(turboshaft_trusted_load_elimination,
-                   turboshaft_load_elimination)
+DEFINE_WEAK_IMPLICATION(turboshaft_trusted_load_elimination,
+                        turboshaft_load_elimination)
 
 DEFINE_EXPERIMENTAL_FEATURE(turboshaft_typed_optimizations,
                             "enable an additional Turboshaft phase that "
@@ -2969,8 +2987,11 @@ DEFINE_BOOL(enable_apx_f_setzucc, false,
             "enable use of APX setzucc for x64 zero-extending setcc patterns")
 DEFINE_BOOL(enable_apx_f_cmovcc, false,
             "enable use of APX cmovcc for x64 conditional move patterns")
+DEFINE_BOOL(enable_apx_f_ccmp, false,
+            "enable use of APX ccmp/ctest for x64 conditional compare patterns")
 DEFINE_IMPLICATION(enable_apx_f_setzucc, enable_apx_f)
 DEFINE_IMPLICATION(enable_apx_f_cmovcc, enable_apx_f)
+DEFINE_IMPLICATION(enable_apx_f_ccmp, enable_apx_f)
 #endif
 #ifdef V8_ENABLE_AVX10_1
 DEFINE_BOOL(enable_avx10_1, false,

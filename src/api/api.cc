@@ -156,7 +156,6 @@
 #include "src/utils/version.h"
 
 #if V8_ENABLE_WEBASSEMBLY
-#include "src/base/fpu.h"
 #include "src/debug/debug-wasm-objects.h"
 #include "src/trap-handler/trap-handler.h"
 #include "src/wasm/streaming-decoder.h"
@@ -3007,6 +3006,7 @@ using TryCatchIsVerboseField = v8::base::BitField<bool, 0, 1, uint8_t>;
 using TryCatchCanContinueField = TryCatchIsVerboseField::Next<bool, 1>;
 using TryCatchCaptureMessageField = TryCatchCanContinueField::Next<bool, 1>;
 using TryCatchRethrowField = TryCatchCaptureMessageField::Next<bool, 1>;
+using TryCatchIsInternalField = TryCatchRethrowField::Next<bool, 1>;
 }  // namespace
 
 v8::TryCatch::TryCatch(v8::Isolate* v8_isolate)
@@ -3015,7 +3015,8 @@ v8::TryCatch::TryCatch(v8::Isolate* v8_isolate)
       flags_(TryCatchIsVerboseField::encode(false) |
              TryCatchCanContinueField::encode(true) |
              TryCatchCaptureMessageField::encode(true) |
-             TryCatchRethrowField::encode(false)) {
+             TryCatchRethrowField::encode(false) |
+             TryCatchIsInternalField::encode(false)) {
   ResetInternal();
   // Special handling for simulators which have a separate JS stack.
   js_stack_comparable_address_ = static_cast<internal::Address>(
@@ -3159,6 +3160,14 @@ bool v8::TryCatch::rethrow() const {
 
 void v8::TryCatch::set_rethrow(bool value) {
   flags_ = TryCatchRethrowField::update(flags_, value);
+}
+
+bool v8::TryCatch::IsInternal() const {
+  return TryCatchIsInternalField::decode(flags_);
+}
+
+void v8::TryCatch::SetIsInternal(bool value) {
+  flags_ = TryCatchIsInternalField::update(flags_, value);
 }
 
 // --- M e s s a g e ---
@@ -3611,18 +3620,24 @@ void ValueSerializer::Delegate::FreeBufferMemory(void* buffer) {
 }
 
 struct ValueSerializer::PrivateData {
-  explicit PrivateData(i::Isolate* i, ValueSerializer::Delegate* delegate)
-      : isolate(i), serializer(i, delegate) {}
+  explicit PrivateData(
+      i::Isolate* i, ValueSerializer::Delegate* delegate,
+      SharedImmutableArrayBufferMode share_immutable_array_buffer)
+      : isolate(i), serializer(i, delegate, share_immutable_array_buffer) {}
   i::Isolate* isolate;
   i::ValueSerializer serializer;
 };
 
-ValueSerializer::ValueSerializer(Isolate* v8_isolate)
-    : ValueSerializer(v8_isolate, nullptr) {}
+ValueSerializer::ValueSerializer(
+    Isolate* v8_isolate,
+    SharedImmutableArrayBufferMode share_immutable_array_buffer)
+    : ValueSerializer(v8_isolate, nullptr, share_immutable_array_buffer) {}
 
-ValueSerializer::ValueSerializer(Isolate* v8_isolate, Delegate* delegate)
+ValueSerializer::ValueSerializer(
+    Isolate* v8_isolate, Delegate* delegate,
+    SharedImmutableArrayBufferMode share_immutable_array_buffer)
     : private_(new PrivateData(reinterpret_cast<i::Isolate*>(v8_isolate),
-                               delegate)) {}
+                               delegate, share_immutable_array_buffer)) {}
 
 ValueSerializer::~ValueSerializer() { delete private_; }
 
@@ -3630,6 +3645,18 @@ void ValueSerializer::WriteHeader() { private_->serializer.WriteHeader(); }
 
 void ValueSerializer::SetTreatArrayBufferViewsAsHostObjects(bool mode) {
   private_->serializer.SetTreatArrayBufferViewsAsHostObjects(mode);
+}
+
+std::vector<std::shared_ptr<v8::BackingStore>>
+ValueSerializer::ReleaseSharedImmutableBackingStores() {
+  auto i_stores = private_->serializer.ReleaseSharedImmutableBackingStores();
+  std::vector<std::shared_ptr<v8::BackingStore>> result;
+  result.reserve(i_stores.size());
+  for (auto& bs : i_stores) {
+    std::shared_ptr<i::BackingStoreBase> bs_base = bs;
+    result.push_back(std::static_pointer_cast<v8::BackingStore>(bs_base));
+  }
+  return result;
 }
 
 Maybe<bool> ValueSerializer::WriteValue(Local<Context> context,
@@ -3774,6 +3801,17 @@ void ValueDeserializer::TransferSharedArrayBuffer(
     uint32_t transfer_id, Local<SharedArrayBuffer> shared_array_buffer) {
   private_->deserializer.TransferArrayBuffer(
       transfer_id, Utils::OpenDirectHandle(*shared_array_buffer));
+}
+
+void ValueDeserializer::SetSharedImmutableBackingStores(
+    std::vector<std::shared_ptr<BackingStore>> backing_stores) {
+  std::vector<std::shared_ptr<i::BackingStore>> i_stores;
+  i_stores.reserve(backing_stores.size());
+  for (auto& bs : backing_stores) {
+    std::shared_ptr<i::BackingStoreBase> bs_base = bs;
+    i_stores.push_back(std::static_pointer_cast<i::BackingStore>(bs_base));
+  }
+  private_->deserializer.SetSharedImmutableBackingStores(std::move(i_stores));
 }
 
 bool ValueDeserializer::ReadUint32(uint32_t* value) {
@@ -9005,16 +9043,17 @@ MaybeLocal<WasmModuleObject> WasmModuleObject::FromCompiledModule(
 #endif  // V8_ENABLE_WEBASSEMBLY
 }
 
-#if V8_ENABLE_WEBASSEMBLY
-namespace {
-MaybeLocal<WasmModuleObject> CompileWasmModuleImpl(
+MaybeLocal<WasmModuleObject> WasmModuleObject::Compile(
+    Isolate* v8_isolate, std::span<const uint8_t> wire_bytes) {
+  return Compile(v8_isolate, wire_bytes, CompileOptions{});
+}
+
+MaybeLocal<WasmModuleObject> WasmModuleObject::Compile(
     Isolate* v8_isolate, std::span<const uint8_t> wire_bytes,
-    i::wasm::CompileTimeImports compile_imports) {
-  // Mirror the JS `WebAssembly.Module` constructor, which disables denormal
-  // floats at compile time when the host FPU flushes them.
-  if (base::FPU::GetFlushDenormals()) {
-    compile_imports.Add(i::wasm::CompileTimeImport::kDisableDenormalFloats);
-  }
+    const CompileOptions& options) {
+#if V8_ENABLE_WEBASSEMBLY
+  i::wasm::CompileTimeImports compile_imports =
+      i::wasm::CompileTimeImportsFromOptions(options);
   base::OwnedVector<const uint8_t> bytes = base::OwnedCopyOf(wire_bytes);
   i::Isolate* i_isolate = reinterpret_cast<i::Isolate*>(v8_isolate);
   // We don't check for `IsWasmCodegenAllowed` here, because this function is
@@ -9027,42 +9066,13 @@ MaybeLocal<WasmModuleObject> CompileWasmModuleImpl(
         i::wasm::WasmEnabledFeatures::FromIsolate(i_isolate);
     maybe_compiled = i::wasm::GetWasmEngine()->SyncCompile(
         i_isolate, enabled_features, std::move(compile_imports), &thrower,
-        std::move(bytes));
+        std::move(bytes),
+        base::Vector<const char>(options.source_url.data(),
+                                 options.source_url.size()));
   }
   CHECK_EQ(maybe_compiled.is_null(), i_isolate->has_exception());
   if (maybe_compiled.is_null()) return {};
   return Utils::ToLocal(maybe_compiled.ToHandleChecked());
-}
-}  // namespace
-#endif  // V8_ENABLE_WEBASSEMBLY
-
-MaybeLocal<WasmModuleObject> WasmModuleObject::Compile(
-    Isolate* v8_isolate, std::span<const uint8_t> wire_bytes) {
-#if V8_ENABLE_WEBASSEMBLY
-  return CompileWasmModuleImpl(v8_isolate, wire_bytes,
-                               i::wasm::CompileTimeImports{});
-#else
-  Utils::ApiCheck(false, "WasmModuleObject::Compile",
-                  "WebAssembly support is not enabled");
-  UNREACHABLE();
-#endif  // V8_ENABLE_WEBASSEMBLY
-}
-
-MaybeLocal<WasmModuleObject> WasmModuleObject::Compile(
-    Isolate* v8_isolate, std::span<const uint8_t> wire_bytes,
-    const CompileTimeImports& compile_imports) {
-#if V8_ENABLE_WEBASSEMBLY
-  i::wasm::CompileTimeImports imports;
-  using Builtins = CompileTimeImports::Builtins;
-  if (compile_imports.builtins & Builtins::kJsString) {
-    imports.Add(i::wasm::CompileTimeImport::kJsString);
-  }
-  if (compile_imports.imported_string_constants_module != nullptr) {
-    imports.constants_module() =
-        compile_imports.imported_string_constants_module;
-    imports.Add(i::wasm::CompileTimeImport::kStringConstants);
-  }
-  return CompileWasmModuleImpl(v8_isolate, wire_bytes, std::move(imports));
 #else
   Utils::ApiCheck(false, "WasmModuleObject::Compile",
                   "WebAssembly support is not enabled");

@@ -350,7 +350,7 @@ Compiler::CompilationResult Compiler::Assemble(
   };
 
   const Flags flags_before_emit = flags_;
-  ZoneVector<Node*> work_list(zone());
+  ZoneVector<WorkItem> work_list(zone());
   work_list_ = &work_list;
   Label fail;
   macro_assembler_->set_fail_label(&fail);
@@ -373,11 +373,13 @@ Compiler::CompilationResult Compiler::Assemble(
   macro_assembler_->BindJumpTarget(&fail);
   macro_assembler_->Fail();
   while (!work_list.empty()) {
-    Node* node = work_list.back();
+    WorkItem item = work_list.back();
+    Node* node = item.node;
     TRACE_WITH_NODE(this, "Popping from worklist ", node);
     work_list.pop_back();
     node->set_on_work_list(false);
     if (!node->label()->is_bound()) {
+      set_flags(item.flags);
       if (node->Emit(this, &new_trace).IsError()) {
         work_list_ = nullptr;
         return ReportError();
@@ -3211,6 +3213,8 @@ void Compiler::ComputeQuickCheckFilters(Node* start,
       has_filter = true;
     }
   }
+#else
+  USE(kMaxChars);
 #endif
 
   // Store the inverse of the collected set, since the exec path rejects on a
@@ -6380,11 +6384,13 @@ class Analysis : public NodeVisitor {
       NegativeLookaroundChoiceNode* that) override {
     DCHECK_EQ(that->alternatives()->length(), 2);  // Lookaround and continue.
 
+    Flags header_flags = flags();
     EnsureAnalyzed(that->lookaround_node());
     if (has_failed()) return;
     STATIC_FOR_EACH(
         Propagators::VisitNegativeLookaroundChoiceLookaroundNode(that));
 
+    set_flags(header_flags);
     EnsureAnalyzed(that->continue_node());
     if (has_failed()) return;
     STATIC_FOR_EACH(

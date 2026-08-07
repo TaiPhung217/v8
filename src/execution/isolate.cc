@@ -731,6 +731,14 @@ void Isolate::UnregisterTryCatchHandler(v8::TryCatch* that) {
   SimulatorStack::UnregisterJSStackComparableAddress(this);
 }
 
+void Isolate::MarkTryCatchInternal(v8::TryCatch* that) {
+  that->SetIsInternal(true);
+}
+
+bool Isolate::IsInternalTryCatch(v8::TryCatch* that) {
+  return that->IsInternal();
+}
+
 DirectHandle<String> Isolate::StackTraceString() {
   if (stack_trace_nesting_level_ == 0) {
     stack_trace_nesting_level_++;
@@ -2614,6 +2622,13 @@ void Isolate::InvokeApiInterruptCallbacks() {
     }
     VMState<EXTERNAL> state(this);
     HandleScope handle_scope(this);
+    // API interrupt callbacks are forbidden from executing JavaScript on the
+    // interrupted Isolate (see v8::Isolate::RequestInterrupt contract in
+    // v8-isolate.h: "Registered |callback| must not reenter interrupted
+    // Isolate.").
+#ifdef V8_DISALLOW_JS_IN_API_INTERRUPTS_IS_CHECKED
+    DisallowJavascriptExecution no_js(this);
+#endif  // V8_DISALLOW_JS_IN_API_INTERRUPTS_IS_CHECKED
     entry.first(reinterpret_cast<v8::Isolate*>(this), entry.second);
   }
 }
@@ -3482,7 +3497,9 @@ Isolate::CatchType PredictExceptionCatchAtFrame(
       // The exception has been externally caught if and only if there is an
       // external handler which is on top of the top-most JS_ENTRY handler.
       if (external_handler != kNullAddress &&
-          !iterator.isolate()->try_catch_handler()->IsVerbose()) {
+          !iterator.isolate()->try_catch_handler()->IsVerbose() &&
+          !Isolate::IsInternalTryCatch(
+              iterator.isolate()->try_catch_handler())) {
         if (entry_handler == kNullAddress || entry_handler > external_handler) {
           return Isolate::CAUGHT_BY_EXTERNAL;
         }
@@ -3526,7 +3543,9 @@ Isolate::CatchType PredictExceptionCatchAtFrame(
 Isolate::CatchType Isolate::PredictExceptionCatcher() {
   if (TopExceptionHandlerType(Tagged<Object>()) ==
       ExceptionHandlerType::kExternalTryCatch) {
-    return CAUGHT_BY_EXTERNAL;
+    if (!try_catch_handler()->IsInternal()) {
+      return CAUGHT_BY_EXTERNAL;
+    }
   }
 
   // Search for an exception handler by performing a full walk over the stack.
@@ -4564,6 +4583,7 @@ void Isolate::SwitchStacks(wasm::StackMemory* from, wasm::StackMemory* to,
 
     from->jmpbuf()->is_on_central_stack =
         thread_local_top()->is_on_central_stack_flag_;
+    from->set_contains_only_old_pointers(false);
   }
   SBXCHECK_EQ(to->jmpbuf()->state, expected_target_state);
   to->jmpbuf()->state = wasm::JumpBuffer::Active;
@@ -7686,8 +7706,15 @@ void Isolate::SetReleaseCppHeapCallback(
 
 void Isolate::RunReleaseCppHeapCallback(std::unique_ptr<v8::CppHeap> cpp_heap) {
   if (release_cpp_heap_callback_) {
+    // Invalidate the isolate alive token, as the CppHeap will continue to exist
+    // after the isolate is destroyed.
+    CppHeap::From(cpp_heap.get())->invalidate_isolate_alive_token();
     release_cpp_heap_callback_(std::move(cpp_heap));
   }
+}
+
+std::shared_ptr<bool> Isolate::cpp_heap_isolate_alive_token() const {
+  return CppHeap::From(heap_.cpp_heap())->isolate_alive_token();
 }
 
 void Isolate::SetPromiseHook(PromiseHook hook) {

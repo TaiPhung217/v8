@@ -141,7 +141,9 @@ constexpr bool CanTriggerGC(T... properties) {
   IF_SPARKPLUG_PLUS(F, PatchCompareOpBaselineCode, 4, 1)         \
   IF_SPARKPLUG_PLUS(F, PatchCompareOpBaselineCodeAndThrow, 4, 1) \
   IF_SPARKPLUG_PLUS(F, PatchBinopBaselineCode, 4, 1)             \
-  IF_SPARKPLUG_PLUS(F, PatchBinopBaselineCodeAndThrow, 4, 1)
+  IF_SPARKPLUG_PLUS(F, PatchBinopBaselineCodeAndThrow, 4, 1)     \
+  IF_SPARKPLUG_PLUS(F, PatchUnaryOpBaselineCode, 4, 1)           \
+  IF_SPARKPLUG_PLUS(F, PatchUnaryOpBaselineCodeAndThrow, 4, 1)
 
 // TODO(olivf): Unify the Maglev/TF variants into one runtime function and pass
 // the optimization tier as an argument.
@@ -300,7 +302,7 @@ constexpr bool CanTriggerGC(T... properties) {
   F(BytecodeBudgetInterrupt_Sparkplug, 1, 1)               \
   F(BytecodeBudgetInterruptWithStackCheck_Sparkplug, 1, 1) \
   F(BytecodeBudgetInterrupt_Maglev, 1, 1)                  \
-  F(BytecodeBudgetInterruptWithStackCheck_Maglev, 1, 1)    \
+  F(BytecodeBudgetLoopInterrupt_Maglev, 2, 1)              \
   F(NotifyContextCellStateWillChange, 1, 1,                \
     RuntimeCallProperty::kCannotTriggerGC)                 \
   F(NewError, 2, 1)                                        \

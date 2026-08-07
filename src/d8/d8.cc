@@ -2927,6 +2927,8 @@ void Shell::RealmCreate(const v8::FunctionCallbackInfo<v8::Value>& info) {
     Local<Object> realm_options = info[0].As<Object>();
     Local<Context> context = info.GetIsolate()->GetCurrentContext();
     Local<Value> value;
+    v8::TryCatch try_catch(info.GetIsolate());
+    try_catch.SetVerbose(true);
     if (realm_options
             ->Get(context, String::NewFromUtf8Literal(
                                info.GetIsolate(), "create_own_microtask_queue"))
@@ -6450,7 +6452,17 @@ bool Worker::StartWorkerThread(Isolate* requester,
       worker->state_.compare_exchange_strong(expected, State::kPrepareRunning));
   auto thread = new WorkerThread(worker, priority);
   worker->thread_ = thread;
-  if (!thread->Start()) return false;
+  if (!thread->Start()) {
+    // If starting the thread fails, we must clean up the thread object and
+    // clear worker->thread_. Otherwise, the strong reference cycle (Worker <->
+    // WorkerThread) prevents the Worker shared_ptr from being freed, leaking
+    // script_ and the Worker instance.
+    // If starting succeeds, this cycle is resolved in WorkerThread::Run().
+    worker->thread_ = nullptr;
+    worker->state_.store(State::kTerminated);
+    delete thread;
+    return false;
+  }
   // Wait until the worker is ready to receive messages.
   worker->started_semaphore_.ParkedWait(
       reinterpret_cast<i::Isolate*>(requester)->main_thread_local_isolate());
@@ -7512,7 +7524,8 @@ class Serializer : public ValueSerializer::Delegate {
  public:
   explicit Serializer(Isolate* isolate)
       : isolate_(isolate),
-        serializer_(isolate, this),
+        serializer_(isolate, this,
+                    ValueSerializer::SharedImmutableArrayBufferMode::kEnabled),
         current_memory_usage_(0) {}
 
   Serializer(const Serializer&) = delete;
@@ -7540,6 +7553,8 @@ class Serializer : public ValueSerializer::Delegate {
     std::pair<uint8_t*, size_t> pair = serializer_.Release();
     data_->data_.reset(pair.first);
     data_->size_ = pair.second;
+    data_->shared_immutable_backing_stores_ =
+        serializer_.ReleaseSharedImmutableBackingStores();
     return Just(true);
   }
 
@@ -7689,6 +7704,8 @@ class Deserializer : public ValueDeserializer::Delegate {
         deserializer_(isolate, data->data(), data->size(), this),
         data_(std::move(data)) {
     deserializer_.SetSupportsLegacyWireFormat(true);
+    deserializer_.SetSharedImmutableBackingStores(
+        data_->shared_immutable_backing_stores());
   }
 
   Deserializer(const Deserializer&) = delete;

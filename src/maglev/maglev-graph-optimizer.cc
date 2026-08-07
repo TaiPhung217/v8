@@ -28,6 +28,45 @@ namespace v8 {
 namespace internal {
 namespace maglev {
 
+namespace {
+
+DeoptFrame* GetDeoptFrameForLazyDeoptHelper(
+    Zone* zone, MaglevReducer<MaglevGraphOptimizer>::LazyDeoptFrameScope* scope,
+    DeoptFrame* parent) {
+  if (scope == nullptr) return parent;
+  DeoptFrame* new_parent =
+      GetDeoptFrameForLazyDeoptHelper(zone, scope->parent(), parent);
+  return zone->New<DeoptFrame>(scope->data(), new_parent);
+}
+
+}  // namespace
+
+std::tuple<DeoptFrame*, interpreter::Register, int>
+MaglevGraphOptimizer::GetDeoptFrameForLazyDeopt(bool can_throw) {
+  CHECK(current_node()->properties().can_lazy_deopt());
+  auto [frame, result_location, result_size] =
+      current_node()->lazy_deopt_info()->GetFrameForCloning();
+
+  if (reducer_.current_lazy_deopt_scope() != nullptr) {
+    frame = GetDeoptFrameForLazyDeoptHelper(
+        graph()->zone(), reducer_.current_lazy_deopt_scope(), frame);
+  }
+  return {frame, result_location, result_size};
+}
+
+DeoptFrame* MaglevGraphOptimizer::GetDeoptFrameForEagerDeopt() {
+  CHECK(current_node()->properties().has_eager_deopt_info());
+  DeoptFrame* frame = &current_node()->eager_deopt_info()->top_frame();
+
+  auto* eager_scope = reducer_.current_eager_deopt_scope();
+  if (eager_scope != nullptr) {
+    frame = GetDeoptFrameForLazyDeoptHelper(graph()->zone(),
+                                            eager_scope->parent(), frame);
+    frame = graph()->zone()->New<DeoptFrame>(eager_scope->data(), frame);
+  }
+  return frame;
+}
+
 #define RETURN_IF_SUCCESS(res) \
   do {                         \
     auto _res = (res);         \
@@ -186,9 +225,19 @@ Subgraph<MaglevGraphOptimizer>::Subgraph(
       saved_block_(reducer->current_block()),
       saved_position_(reducer->current_block_position()),
       saved_kna_(&reducer->known_node_aspects()),
-      parent_(reducer->active_subgraph_) {
+      parent_(reducer->active_subgraph_),
+      stashed_nodes_at_(zone_),
+      stashed_nodes_at_end_(zone_) {
   reducer_->active_subgraph_ = this;
-  reducer_->FlushNodesToBlock();
+  if (parent_ == nullptr) {
+    DCHECK_IMPLIES(
+        reducer_->HasPendingSplice(),
+        reducer_->new_nodes_at_.empty() && reducer_->new_nodes_at_end_.empty());
+    std::swap(stashed_nodes_at_, reducer_->new_nodes_at_);
+    std::swap(stashed_nodes_at_end_, reducer_->new_nodes_at_end_);
+  } else {
+    reducer_->FlushNodesToBlock();
+  }
 
   // Create entry block.
   BasicBlock* entry =
@@ -267,6 +316,16 @@ Subgraph<MaglevGraphOptimizer>::~Subgraph() {
   reducer_->set_current_block(saved_block_);
   reducer_->SetNewNodePosition(saved_position_);
   reducer_->set_known_node_aspects(saved_kna_);
+
+  if (parent_ == nullptr) {
+    DCHECK(reducer_->new_nodes_at_.empty());
+    DCHECK(reducer_->new_nodes_at_end_.empty());
+    std::swap(stashed_nodes_at_, reducer_->new_nodes_at_);
+    std::swap(stashed_nodes_at_end_, reducer_->new_nodes_at_end_);
+    if (!is_empty) {
+      reducer_->FlushNodesToBlock();
+    }
+  }
 }
 
 void Subgraph<MaglevGraphOptimizer>::MergeIntoLabel(Label* label,
@@ -613,6 +672,12 @@ MaybeReduceResult MaglevGraphOptimizer::GetUntaggedValueWithRepresentation(
         known_node_aspects().GetOrCreateInfoFor(broker(), node);
     auto& alternative = node_info->alternative();
     if (ValueNode* alt = alternative.get(use_repr)) return alt;
+    // If `node` is itself tagging an untagged value, convert that value
+    // directly instead of untagging the tagged result.
+    if (node->is_conversion()) {
+      return GetUntaggedValueWithRepresentation(node->input_node(0), use_repr,
+                                                conversion_type);
+    }
     return {};
   }
   // TODO(victorgomes): The GetXXX functions may emit a conversion node that
@@ -988,7 +1053,8 @@ ProcessResult MaglevGraphOptimizer::VisitCheckJSReceiverOrNullOrUndefined(
 
 ProcessResult MaglevGraphOptimizer::VisitCheckNotHole(
     CheckNotHole* node, const ProcessingState& state) {
-  // TODO(b/424157317): Optimize.
+  REMOVE_AND_RETURN_IF_DONE(
+      reducer_.TryFoldCheckNotHole(node->ObjectInput().node()));
   return ProcessResult::kContinue;
 }
 
@@ -1152,11 +1218,6 @@ ProcessResult MaglevGraphOptimizer::VisitGeneratorStore(
   return ProcessResult::kContinue;
 }
 
-ProcessResult MaglevGraphOptimizer::VisitTryOnStackReplacement(
-    TryOnStackReplacement* node, const ProcessingState& state) {
-  // TODO(b/424157317): Optimize.
-  return ProcessResult::kContinue;
-}
 
 ProcessResult MaglevGraphOptimizer::VisitStoreMap(
     StoreMap* node, const ProcessingState& state) {
@@ -1484,8 +1545,9 @@ ProcessResult MaglevGraphOptimizer::VisitCall(Call* node,
     Builtin builtin_id = shared.builtin_id();
     if (MaglevGraphBuilder::IsReducibleBuiltin(builtin_id)) {
       CallArguments args(node);
-      MaybeReduceResult reduction = reducer_.TryReduceBuiltin(
-          builtin_id, *target_function, args, node->feedback());
+      MaybeReduceResult reduction =
+          reducer_.TryReduceBuiltin(builtin_id, node->ContextInput().node(),
+                                    *target_function, args, node->feedback());
       if (reduction.IsDoneWithAbort()) {
         return ProcessResult::kTruncateBlock;
       }
@@ -1687,7 +1749,8 @@ ProcessResult MaglevGraphOptimizer::VisitCallKnownBuiltin(
 
   CallArguments args(node);
   MaybeReduceResult reduction = reducer_.TryReduceBuiltin(
-      node->builtin_id(), *target_function, args, node->feedback_source());
+      node->builtin_id(), node->ContextInput().node(), *target_function, args,
+      node->feedback_source());
   if (!reduction.IsDone()) return ProcessResult::kContinue;
   if (reduction.IsDoneWithAbort()) {
     return ProcessResult::kTruncateBlock;

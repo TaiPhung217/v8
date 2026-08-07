@@ -23,7 +23,7 @@ namespace v8 {
 namespace internal {
 namespace maglev {
 
-class MaglevGraphOptimizer {
+class V8_EXPORT_PRIVATE MaglevGraphOptimizer {
  public:
   explicit MaglevGraphOptimizer(
       Graph* graph, RecomputeKnownNodeAspectsProcessor& kna_processor,
@@ -60,16 +60,10 @@ class MaglevGraphOptimizer {
     kna_processor_.set_known_node_aspects(known_node_aspects);
   }
 
-  DeoptFrame* GetDeoptFrameForEagerDeopt() {
-    CHECK(current_node()->properties().has_eager_deopt_info());
-    return &current_node()->eager_deopt_info()->top_frame();
-  }
+  DeoptFrame* GetDeoptFrameForEagerDeopt();
 
   std::tuple<DeoptFrame*, interpreter::Register, int> GetDeoptFrameForLazyDeopt(
-      bool can_throw) {
-    CHECK(current_node()->properties().can_lazy_deopt());
-    return current_node()->lazy_deopt_info()->GetFrameForCloning();
-  }
+      bool can_throw);
 
   void AttachExceptionHandlerInfo(NodeBase* node);
 
@@ -202,7 +196,7 @@ class MaglevGraphOptimizer {
 // the GraphProcessor can stitch the new blocks into the live graph at the
 // node currently being visited.
 template <>
-class Subgraph<MaglevGraphOptimizer>
+class V8_EXPORT_PRIVATE Subgraph<MaglevGraphOptimizer>
     : public SubgraphBase<Subgraph<MaglevGraphOptimizer>,
                           MaglevGraphOptimizer> {
  public:
@@ -249,6 +243,9 @@ class Subgraph<MaglevGraphOptimizer>
   KnownNodeAspects* saved_kna_;
   // Enclosing subgraph, or nullptr if this is a top-level subgraph.
   Subgraph<MaglevGraphOptimizer>* parent_;
+
+  ZoneVector<std::pair<int, Node*>> stashed_nodes_at_;
+  ZoneVector<Node*> stashed_nodes_at_end_;
 };
 
 }  // namespace maglev

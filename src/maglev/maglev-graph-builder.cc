@@ -65,6 +65,7 @@
 #include "src/objects/arguments.h"
 #include "src/objects/contexts.h"
 #include "src/objects/elements-kind.h"
+#include "src/objects/feedback-vector-inl.h"
 #include "src/objects/feedback-vector.h"
 #include "src/objects/fixed-array.h"
 #include "src/objects/function-kind.h"
@@ -261,145 +262,15 @@ MaglevGraphBuilder::LazyDeoptResultLocationScope::
   builder_->lazy_deopt_result_location_scope_ = previous_;
 }
 
-class V8_NODISCARD MaglevGraphBuilder::DeoptFrameScopeBase {
- public:
-  DeoptFrameScopeBase(MaglevGraphBuilder* builder, Builtin continuation,
-                      compiler::OptionalJSFunctionRef maybe_js_target = {},
-                      base::Vector<ValueNode* const> parameters = {})
-      : builder_(builder),
-        data_(DeoptFrame::BuiltinContinuationFrameData{
-            continuation,
-            parameters.empty() ? base::Vector<ValueNode*>{}
-                               : builder->zone()->CloneVector(parameters),
-            builder->GetContext(), maybe_js_target}) {
-    builder->current_interpreter_frame().virtual_objects().Snapshot();
-    if (parameters.size() > 0) {
-      if (InlinedAllocation* receiver =
-              parameters[0]->TryCast<InlinedAllocation>()) {
-        // We escape the first argument, since the builtin continuation call can
-        // trigger a stack iteration, which expects the receiver to be a
-        // meterialized object.
-        receiver->ForceEscaping();
-      }
-    } else {
-      DCHECK(data_.get<DeoptFrame::BuiltinContinuationFrameData>()
-                 .parameters.empty());
-    }
-  }
-
-  DeoptFrameScopeBase(MaglevGraphBuilder* builder, ValueNode* receiver)
-      : builder_(builder),
-        data_(DeoptFrame::ConstructInvokeStubFrameData{
-            *builder->compilation_unit(), builder->GetCurrentSourcePosition(),
-            receiver, builder->GetContext()}) {
-    builder_->current_interpreter_frame().virtual_objects().Snapshot();
-  }
-
-  ~DeoptFrameScopeBase() {
-    // We might have cached a checkpointed frame which includes this scope;
-    // reset it just in case.
-    builder_->latest_checkpointed_frame_ = nullptr;
-  }
-
-  DeoptFrame::FrameData& data() { return data_; }
-  const DeoptFrame::FrameData& data() const { return data_; }
-
- protected:
-  MaglevGraphBuilder* builder() { return builder_; }
-
- private:
-  MaglevGraphBuilder* builder_;
-  DeoptFrame::FrameData data_;
-};
-
-namespace {
-
-void DebugVerifyBuiltinDeoptFrame(const DeoptFrame::FrameData& data,
-                                  compiler::ContinuationFrameStateMode mode) {
-#ifdef DEBUG
-  DCHECK_EQ(data.tag(), DeoptFrame::FrameType::kBuiltinContinuationFrame);
-  const DeoptFrame::BuiltinContinuationFrameData& frame =
-      data.get<DeoptFrame::BuiltinContinuationFrameData>();
-  if (frame.maybe_js_target) {
-    int stack_parameter_count =
-        Builtins::GetStackParameterCount(frame.builtin_id);
-    DCHECK_EQ(stack_parameter_count,
-              frame.parameters.length() +
-                  compiler::DeoptimizerParameterCountFor(mode));
-  } else {
-    CallInterfaceDescriptor descriptor =
-        Builtins::CallInterfaceDescriptorFor(frame.builtin_id);
-    DCHECK_EQ(descriptor.GetParameterCount(),
-              frame.parameters.length() +
-                  compiler::DeoptimizerParameterCountFor(mode));
-  }
-#endif
-}
-
-}  // namespace
-
-class V8_NODISCARD MaglevGraphBuilder::LazyDeoptFrameScope
-    : public MaglevGraphBuilder::DeoptFrameScopeBase {
- public:
-  LazyDeoptFrameScope(MaglevGraphBuilder* builder, Builtin continuation,
-                      compiler::OptionalJSFunctionRef maybe_js_target = {},
-                      base::Vector<ValueNode* const> parameters = {})
-      : DeoptFrameScopeBase(builder, continuation, maybe_js_target, parameters),
-        parent_(builder->current_lazy_deopt_scope_) {
-    DebugVerifyBuiltinDeoptFrame(data(),
-                                 compiler::ContinuationFrameStateMode::LAZY);
-    builder->current_lazy_deopt_scope_ = this;
-  }
-
-  LazyDeoptFrameScope(MaglevGraphBuilder* builder, ValueNode* receiver)
-      : DeoptFrameScopeBase(builder, receiver),
-        parent_(builder->current_lazy_deopt_scope_) {
-    builder->current_lazy_deopt_scope_ = this;
-  }
-
-  ~LazyDeoptFrameScope() { builder()->current_lazy_deopt_scope_ = parent_; }
-
-  LazyDeoptFrameScope* parent() const { return parent_; }
-
- private:
-  MaglevGraphBuilder::LazyDeoptFrameScope* parent_;
-};
-
-class V8_NODISCARD MaglevGraphBuilder::EagerDeoptFrameScope
-    : public MaglevGraphBuilder::DeoptFrameScopeBase {
- public:
-  EagerDeoptFrameScope(MaglevGraphBuilder* builder, Builtin continuation,
-                       compiler::OptionalJSFunctionRef maybe_js_target = {},
-                       base::Vector<ValueNode* const> parameters = {})
-      : DeoptFrameScopeBase(builder, continuation, maybe_js_target, parameters),
-        parent_(builder->current_lazy_deopt_scope_) {
-    DebugVerifyBuiltinDeoptFrame(data(),
-                                 compiler::ContinuationFrameStateMode::EAGER);
-    // Eager deopt continuations cannot be nested, so this should always be
-    // null.
-    DCHECK_NULL(builder->current_eager_deopt_scope_);
-    builder->current_eager_deopt_scope_ = this;
-  }
-
-  ~EagerDeoptFrameScope() { builder()->current_eager_deopt_scope_ = nullptr; }
-
-  LazyDeoptFrameScope* parent() const { return parent_; }
-
- private:
-  // An eager deopt continuation's parent has to be a lazy deopt continuation,
-  // because we want to continue _after_ the eager deopt continuation completes.
-  MaglevGraphBuilder::LazyDeoptFrameScope* parent_;
-};
-
 class MaglevGraphBuilder::MaglevSubGraphBuilder::LoopLabel {
  public:
  private:
-  explicit LoopLabel(MergePointInterpreterFrameState* merge_state,
+  explicit LoopLabel(LoopMergePointInterpreterFrameState* merge_state,
                      BasicBlock* loop_header)
       : merge_state_(merge_state), loop_header_(loop_header) {}
 
   friend class MaglevSubGraphBuilder;
-  MergePointInterpreterFrameState* merge_state_ = nullptr;
+  LoopMergePointInterpreterFrameState* merge_state_ = nullptr;
   BasicBlock* loop_header_;
 };
 
@@ -513,7 +384,7 @@ MaglevGraphBuilder::MaglevSubGraphBuilder::BeginLoop(
 
   // Create a state for the loop header, with two predecessors (the above jump
   // and the back edge), and initialise with the current state.
-  MergePointInterpreterFrameState* loop_state =
+  LoopMergePointInterpreterFrameState* loop_state =
       MergePointInterpreterFrameState::NewForLoop(
           variable_frame_, *dummy_unit_, builder_->is_inline(),
           builder_->graph(), 0, 2, loop_header_liveness, loop_info);
@@ -1162,9 +1033,9 @@ DeoptFrame* MaglevGraphBuilder::GetDeoptFrameForEagerCall(
       interpreter::Bytecodes::WritesAccumulator(iterator_.current_bytecode()) ||
       interpreter::Bytecodes::ClobbersAccumulator(
           iterator_.current_bytecode()));
-  DeoptFrame* deopt_frame =
-      GetDeoptFrameForLazyDeoptHelper(interpreter::Register::invalid_value(), 0,
-                                      current_lazy_deopt_scope_, true, false);
+  DeoptFrame* deopt_frame = GetDeoptFrameForLazyDeoptHelper(
+      interpreter::Register::invalid_value(), 0,
+      reducer_.current_lazy_deopt_scope(), true, false);
   return AddInlinedArgumentsToDeoptFrame(deopt_frame, unit, closure, args);
 }
 
@@ -1206,7 +1077,7 @@ DeoptFrame* MaglevGraphBuilder::GetLatestCheckpointedFrame() {
         [&](ValueNode* node, interpreter::Register) { AddDeoptUse(node); });
     AddDeoptUse(latest_checkpointed_frame_->as_interpreted().closure());
 
-    EagerDeoptFrameScope* deopt_scope = current_eager_deopt_scope_;
+    EagerDeoptFrameScope* deopt_scope = reducer_.current_eager_deopt_scope();
     if (deopt_scope != nullptr) {
       AddDeoptUseToScopeData(deopt_scope->data());
       latest_checkpointed_frame_ = zone()->New<DeoptFrame>(
@@ -1228,10 +1099,11 @@ MaglevGraphBuilder::GetDeoptFrameForLazyDeopt(bool can_throw) {
   } else {
     std::tie(result_location, result_size) = GetResultLocationAndSize();
   }
-  return std::make_tuple(GetDeoptFrameForLazyDeoptHelper(
-                             result_location, result_size,
-                             current_lazy_deopt_scope_, false, can_throw),
-                         result_location, result_size);
+  return std::make_tuple(
+      GetDeoptFrameForLazyDeoptHelper(result_location, result_size,
+                                      reducer_.current_lazy_deopt_scope(),
+                                      false, can_throw),
+      result_location, result_size);
 }
 
 void MaglevGraphBuilder::AddDeoptUseToScopeData(
@@ -1536,10 +1408,12 @@ using Float64NodeFor = typename Float64NodeForHelper<kOperation>::type;
 
 template <Operation kOperation>
 ReduceResult MaglevGraphBuilder::BuildGenericUnaryOperationNode() {
-  FeedbackSlot slot_index = GetSlotOperand(0);
   ValueNode* value = GetAccumulator();
   return SetAccumulator(AddNewNode<GenericNodeForOperation<kOperation>>(
-      {value}, compiler::FeedbackSource{feedback(), slot_index}));
+      {value}, compiler::EmbeddedFeedbackSource{
+                   indirect_handle(iterator_.bytecode_array(), local_isolate()),
+                   iterator_.GetEmbeddedFeedbackOffset(
+                       kUnaryEmbeddedFeedbackOperandIndex)}));
 }
 
 template <Operation kOperation>
@@ -1772,8 +1646,8 @@ constexpr bool BigIntBinaryOperationHasBuiltin(Operation operation) {
 
 template <Operation kOperation>
 ReduceResult MaglevGraphBuilder::VisitUnaryOperation() {
-  FeedbackNexus nexus = FeedbackNexusForOperand(0);
-  BinaryOperationHint feedback_hint = nexus.GetBinaryOperationFeedback();
+  BinaryOperationHint feedback_hint =
+      iterator_.GetEmbeddedOperationHint<BinaryOperationFeedback>();
   switch (feedback_hint) {
     case BinaryOperationHint::kNone:
       return reducer_.EmitUnconditionalDeopt(
@@ -8044,7 +7918,8 @@ MaybeReduceResult MaglevGraphBuilder::TryReduceArrayForEach(
              ValueNode* callback, ValueNode* this_arg, ValueNode* index_int32,
              ValueNode* next_index_int32, ValueNode* original_length) {
         return LazyDeoptFrameScope(
-            this, Builtin::kArrayForEachLoopLazyDeoptContinuation, target,
+            &reducer_, GetContext(),
+            Builtin::kArrayForEachLoopLazyDeoptContinuation, target,
             base::VectorOf<ValueNode*>({receiver, callback, this_arg,
                                         next_index_int32, original_length}));
       };
@@ -8054,7 +7929,8 @@ MaybeReduceResult MaglevGraphBuilder::TryReduceArrayForEach(
              ValueNode* callback, ValueNode* this_arg, ValueNode* index_int32,
              ValueNode* next_index_int32, ValueNode* original_length) {
         return EagerDeoptFrameScope(
-            this, Builtin::kArrayForEachLoopEagerDeoptContinuation, target,
+            &reducer_, GetContext(),
+            Builtin::kArrayForEachLoopEagerDeoptContinuation, target,
             base::VectorOf<ValueNode*>({receiver, callback, this_arg,
                                         next_index_int32, original_length}));
       };
@@ -8132,7 +8008,8 @@ MaybeReduceResult MaglevGraphBuilder::TryReduceArrayMap(
                                   ValueNode* original_length) {
     DCHECK_NOT_NULL(result_array);
     return LazyDeoptFrameScope(
-        this, Builtin::kArrayMapLoopLazyDeoptContinuation, target,
+        &reducer_, GetContext(), Builtin::kArrayMapLoopLazyDeoptContinuation,
+        target,
         base::VectorOf<ValueNode*>({receiver, callback, this_arg, result_array,
                                     index_int32, original_length}));
   };
@@ -8145,7 +8022,8 @@ MaybeReduceResult MaglevGraphBuilder::TryReduceArrayMap(
                                    ValueNode* original_length) {
     DCHECK_NOT_NULL(result_array);
     return EagerDeoptFrameScope(
-        this, Builtin::kArrayMapLoopEagerDeoptContinuation, target,
+        &reducer_, GetContext(), Builtin::kArrayMapLoopEagerDeoptContinuation,
+        target,
         base::VectorOf<ValueNode*>({receiver, callback, this_arg, result_array,
                                     next_index_int32, original_length}));
   };
@@ -8378,77 +8256,84 @@ MaybeReduceResult MaglevGraphBuilder::TryReduceArrayIteratingBuiltin(
 
   // No need to finish the loop if this code is unreachable.
   if (!result.IsDoneWithAbort()) {
-    if (process_element_callback) {
-      ValueNode* value = result.value();
-      RETURN_IF_ABORT((*process_element_callback)(index_int32, value));
-    }
+    ReduceResult loop_body_result = [&]() -> ReduceResult {
+      if (process_element_callback) {
+        ValueNode* value = result.value();
+        RETURN_IF_ABORT((*process_element_callback)(index_int32, value));
+      }
 
-    // If any of the receiver's maps were unstable maps, we have to re-check the
-    // maps on each iteration, in case the callback changed them. That said, we
-    // know that the maps are valid on the first iteration, so we can rotate the
-    // check to _after_ the callback, and then elide it if the receiver maps are
-    // still known to be valid (i.e. the known maps after the call are contained
-    // inside the known maps before the call).
-    bool recheck_maps_after_call = receiver_maps_were_unstable;
-    if (recheck_maps_after_call) {
-      // No need to recheck maps if there are known maps...
-      MapInference inference_after_call(this, receiver);
-      // ... for which no side effect has occurred after recording them...
-      if (inference_after_call.all_maps_are_fresh()) {
-        if (auto receiver_maps_after_call =
-                inference_after_call.TryGetPossibleMaps()) {
-          // ... and those known maps are equal to, or a subset of, the maps
-          // before the call.
-          recheck_maps_after_call =
-              !receiver_maps_before_loop.contains(*receiver_maps_after_call);
+      // If any of the receiver's maps were unstable maps, we have to re-check
+      // the maps on each iteration, in case the callback changed them. That
+      // said, we know that the maps are valid on the first iteration, so we can
+      // rotate the check to _after_ the callback, and then elide it if the
+      // receiver maps are still known to be valid (i.e. the known maps after
+      // the call are contained inside the known maps before the call).
+      bool recheck_maps_after_call = receiver_maps_were_unstable;
+      if (recheck_maps_after_call) {
+        // No need to recheck maps if there are known maps...
+        MapInference inference_after_call(this, receiver);
+        // ... for which no side effect has occurred after recording them...
+        if (inference_after_call.all_maps_are_fresh()) {
+          if (auto receiver_maps_after_call =
+                  inference_after_call.TryGetPossibleMaps()) {
+            // ... and those known maps are equal to, or a subset of, the maps
+            // before the call.
+            recheck_maps_after_call =
+                !receiver_maps_before_loop.contains(*receiver_maps_after_call);
+          }
         }
       }
-    }
 
-    // Make sure to finish the loop if we eager deopt in the map check or index
-    // check.
-    const EagerDeoptFrameScope& eager_deopt_scope =
-        get_eager_deopt_scope(target, receiver, callback, this_arg, index_int32,
-                              next_index_int32, original_length);
+      // Make sure to finish the loop if we eager deopt in the map check or
+      // index check.
+      const EagerDeoptFrameScope& eager_deopt_scope =
+          get_eager_deopt_scope(target, receiver, callback, this_arg,
+                                index_int32, next_index_int32, original_length);
 
-    if (recheck_maps_after_call) {
-      // Build the CheckMap manually, since we're doing it with already known
-      // maps rather than feedback, and we don't need to update known node
-      // aspects or types since we're at the end of the loop anyway.
-      bool emit_check_with_migration = std::any_of(
-          receiver_maps_before_loop.begin(), receiver_maps_before_loop.end(),
-          [](compiler::MapRef map) { return map.is_migration_target(); });
-      if (emit_check_with_migration) {
-        RETURN_IF_ABORT(AddNewNode<CheckMapsWithMigration>(
-            {receiver}, receiver_maps_before_loop,
-            CheckType::kOmitHeapObjectCheck));
-      } else {
-        RETURN_IF_ABORT(AddNewNode<CheckMaps>({receiver},
-                                              receiver_maps_before_loop,
-                                              CheckType::kOmitHeapObjectCheck));
+      if (recheck_maps_after_call) {
+        // Build the CheckMap manually, since we're doing it with already known
+        // maps rather than feedback, and we don't need to update known node
+        // aspects or types since we're at the end of the loop anyway.
+        bool emit_check_with_migration = std::any_of(
+            receiver_maps_before_loop.begin(), receiver_maps_before_loop.end(),
+            [](compiler::MapRef map) { return map.is_migration_target(); });
+        if (emit_check_with_migration) {
+          RETURN_IF_ABORT(AddNewNode<CheckMapsWithMigration>(
+              {receiver}, receiver_maps_before_loop,
+              CheckType::kOmitHeapObjectCheck));
+        } else {
+          RETURN_IF_ABORT(
+              AddNewNode<CheckMaps>({receiver}, receiver_maps_before_loop,
+                                    CheckType::kOmitHeapObjectCheck));
+        }
       }
-    }
 
-    // Check if the index is still in bounds, in case the callback changed the
-    // length.
-    ValueNode* current_length;
-    GET_VALUE_OR_ABORT(current_length, BuildLoadJSArrayLength(receiver));
-    sub_builder.set(var_length, current_length);
+      // Check if the index is still in bounds, in case the callback changed the
+      // length.
+      ValueNode* current_length;
+      GET_VALUE_OR_ABORT(current_length, BuildLoadJSArrayLength(receiver));
+      sub_builder.set(var_length, current_length);
 
-    // Reference compare the loaded length against the original length. If this
-    // is the same value node, then we didn't have any side effects and didn't
-    // clear the cached length.
-    if (current_length != original_length) {
-      RETURN_IF_ABORT(
-          TryBuildCheckInt32Condition(original_length_int32, current_length,
-                                      AssertCondition::kUnsignedLessThanEqual,
-                                      DeoptimizeReason::kArrayLengthChanged));
-    }
+      // Reference compare the loaded length against the original length. If
+      // this is the same value node, then we didn't have any side effects and
+      // didn't clear the cached length.
+      if (current_length != original_length) {
+        RETURN_IF_ABORT(
+            TryBuildCheckInt32Condition(original_length_int32, current_length,
+                                        AssertCondition::kUnsignedLessThanEqual,
+                                        DeoptimizeReason::kArrayLengthChanged));
+      }
+      return ReduceResult::Done();
+    }();
+    // loop_body_result is either Done or DoneWithAbort. An abort sets
+    // current_block to null, which GotoOrTrim and EndLoop below both handle --
+    // no explicit check needed.
+    USE(loop_body_result);
   }
 
   if (skip_call.has_value()) {
     sub_builder.GotoOrTrim(&*skip_call);
-    sub_builder.Bind(&*skip_call);
+    RETURN_IF_ABORT(sub_builder.TrimPredecessorsAndBind(&*skip_call));
   }
 
   sub_builder.set(var_index, next_index_int32);
@@ -8457,8 +8342,7 @@ MaybeReduceResult MaglevGraphBuilder::TryReduceArrayIteratingBuiltin(
   // ```
   // bind end
   // ```
-  sub_builder.Bind(&loop_end);
-
+  RETURN_IF_ABORT(sub_builder.TrimPredecessorsAndBind(&loop_end));
   return ReduceResult::Done();
 }
 
@@ -8575,7 +8459,8 @@ MaybeReduceResult MaglevGraphBuilder::TryReduceGeneratorPrototypeNext(
   ValueNode* result;
   {
     LazyDeoptFrameScope lazy_deopt_scope(
-        this, Builtin::kGeneratorPrototypeNextLazyDeoptContinuation, target,
+        &reducer_, GetContext(),
+        Builtin::kGeneratorPrototypeNextLazyDeoptContinuation, target,
         base::VectorOf<ValueNode*>(
             {GetRootConstant(RootIndex::kUndefinedValue), receiver,
              GetRootConstant(RootIndex::kTheHoleValue)}));
@@ -9857,6 +9742,16 @@ MaybeReduceResult MaglevGraphBuilder::TryReduceArrayPrototypeSort(
         " array iteration");
   }
 
+  // The union kind is only an upper bound on each receiver's own kind. Loads
+  // through it widen and are sound; stores narrow and are not. Unlike the
+  // iterating builtins, sort writes its snapshot back into the receiver.
+  if (std::any_of(possible_maps->begin(), possible_maps->end(),
+                  [&](compiler::MapRef map) {
+                    return map.elements_kind() != elements_kind;
+                  })) {
+    FAIL(" to reduce Array.prototype.sort - receiver elements kinds disagree");
+  }
+
   // Holey arrays require holes to be moved to the end of the sorted result
   // (ECMA-262 23.1.3.30 step 5, skip-holes mode).  The insertion sort does
   // not implement this, so bail out for any holey kind.
@@ -10009,8 +9904,8 @@ MaybeReduceResult MaglevGraphBuilder::TryReduceArrayPrototypeSort(
     // spec's _items_ snapshot and writes back originalLength elements,
     // independent of any cmp side effects on the receiver.
     EagerDeoptFrameScope eager_deopt_scope(
-        this, Builtin::kArraySortContinueFromSnapshotEagerDeoptContinuation,
-        target,
+        &reducer_, GetContext(),
+        Builtin::kArraySortContinueFromSnapshotEagerDeoptContinuation, target,
         base::VectorOf<ValueNode*>({receiver, comparefn, temp_array, length}));
 
     MaglevSubGraphBuilder::Label outer_end(&sub_builder, 1);
@@ -10086,8 +9981,8 @@ MaybeReduceResult MaglevGraphBuilder::TryReduceArrayPrototypeSort(
       // the inner-loop body below).  The continuation feeds temp_array and
       // the original length to the generic PowerSort tail.
       LazyDeoptFrameScope restart_sort(
-          this, Builtin::kArraySortContinueFromSnapshotLazyDeoptContinuation,
-          target,
+          &reducer_, GetContext(),
+          Builtin::kArraySortContinueFromSnapshotLazyDeoptContinuation, target,
           base::VectorOf<ValueNode*>(
               {receiver, comparefn, temp_array, length}));
 
@@ -10892,8 +10787,8 @@ MaybeReduceResult MaglevGraphBuilder::TryReduceBuiltin(
   if (!shared.HasBuiltinId()) return {};
   TRACE("  ! Trying to reduce builtin " << Builtins::name(shared.builtin_id()));
   // First try the builtins that have been migrated to MaglevReducer.
-  RETURN_IF_DONE(reducer_.TryReduceBuiltin(shared.builtin_id(), target, args,
-                                           feedback_source));
+  RETURN_IF_DONE(reducer_.TryReduceBuiltin(shared.builtin_id(), GetContext(),
+                                           target, args, feedback_source));
   // Then fall back to the builtins that are only reduced in the graph builder.
   switch (shared.builtin_id()) {
 #define CASE(Name, ...)  \
@@ -11472,15 +11367,7 @@ ReduceResult MaglevGraphBuilder::BuildConvertHoleToUndefined(ValueNode* node) {
 }
 
 ReduceResult MaglevGraphBuilder::BuildCheckNotHole(ValueNode* node) {
-  if (!node->is_tagged()) return ReduceResult::Done();
-  compiler::OptionalHeapObjectRef maybe_constant =
-      TryGetConstant<HeapObject>(node);
-  if (maybe_constant) {
-    if (maybe_constant.value().IsTheHole()) {
-      return reducer_.EmitUnconditionalDeopt(DeoptimizeReason::kHole);
-    }
-    return ReduceResult::Done();
-  }
+  RETURN_IF_DONE(reducer_.TryFoldCheckNotHole(node));
   return AddNewNode<CheckNotHole>({node});
 }
 
@@ -12435,7 +12322,7 @@ MaybeReduceResult MaglevGraphBuilder::TryReduceAsyncFunctionReject(
   // point will still return the {promise} instead of the result of the
   // JSRejectPromise operation (which yields undefined).
   LazyDeoptFrameScope deopt_continuation(
-      this, Builtin::kAsyncFunctionLazyDeoptContinuation, {},
+      &reducer_, GetContext(), Builtin::kAsyncFunctionLazyDeoptContinuation, {},
       base::VectorOf<ValueNode*>({promise}));
 
   // Disable the additional debug event for the rejection since a
@@ -12510,8 +12397,8 @@ MaybeReduceResult MaglevGraphBuilder::TryReduceAsyncFunctionResolve(
     // point will still return the {promise} instead of the result of the
     // JSResolvePromise operation (which yields undefined).
     LazyDeoptFrameScope deopt_continuation(
-        this, Builtin::kAsyncFunctionLazyDeoptContinuation, {},
-        base::VectorOf<ValueNode*>({promise}));
+        &reducer_, GetContext(), Builtin::kAsyncFunctionLazyDeoptContinuation,
+        {}, base::VectorOf<ValueNode*>({promise}));
 
     BuildCallBuiltin<Builtin::kResolvePromise>({promise, value});
   }
@@ -12985,7 +12872,8 @@ MaybeReduceResult MaglevGraphBuilder::TryReduceConstructBuiltin(
         value = GetRootConstant(RootIndex::kempty_string);
       } else {
         LazyDeoptFrameScope deopt_continuation(
-            this, Builtin::kStringCreateLazyDeoptContinuation, target_function,
+            &reducer_, GetContext(),
+            Builtin::kStringCreateLazyDeoptContinuation, target_function,
             base::VectorOf<ValueNode*>(
                 {GetRootConstant(RootIndex::kTheHoleValue)}));
         GET_VALUE_OR_ABORT(value,
@@ -12995,9 +12883,16 @@ MaybeReduceResult MaglevGraphBuilder::TryReduceConstructBuiltin(
           reducer_.CreateJSStringWrapper(value), AllocationType::kYoung);
     }
     case Builtin::kPromiseConstructor:
-    case Builtin::kTypedArrayConstructor:
       // TODO(victorgomes): specialize more known constants builtin targets.
       break;
+    case Builtin::kTypedArrayConstructor: {
+      LazyDeoptFrameScope construct(
+          &reducer_, GetContext(), GetRootConstant(RootIndex::kTheHoleValue),
+          *compilation_unit(), GetCurrentSourcePosition());
+      RETURN_IF_DONE(reducer_.TryReduceTypedArrayConstructor(
+          GetContext(), target_function, new_target, args));
+      break;
+    }
     default:
       break;
   }
@@ -13023,7 +12918,9 @@ MaybeReduceResult MaglevGraphBuilder::TryReduceJSConstructStub(
     args.set_receiver(implicit_receiver);
     ValueNode* call_result;
     {
-      LazyDeoptFrameScope construct(this, implicit_receiver);
+      LazyDeoptFrameScope construct(&reducer_, GetContext(), implicit_receiver,
+                                    *compilation_unit(),
+                                    GetCurrentSourcePosition());
       MaybeReduceResult result = TryBuildCallKnownJSFunction(
           target_constant, new_target, args, feedback_source);
       RETURN_IF_ABORT(result);
@@ -13082,7 +12979,9 @@ MaybeReduceResult MaglevGraphBuilder::TryReduceJSConstructStub(
   args.set_receiver(implicit_receiver);
   ValueNode* call_result;
   {
-    LazyDeoptFrameScope construct(this, implicit_receiver);
+    LazyDeoptFrameScope construct(&reducer_, GetContext(), implicit_receiver,
+                                  *compilation_unit(),
+                                  GetCurrentSourcePosition());
     MaybeReduceResult result = TryBuildCallKnownJSFunction(
         target_constant, new_target, args, feedback_source);
     RETURN_IF_ABORT(result);
@@ -13523,7 +13422,8 @@ ReduceResult MaglevGraphBuilder::VisitArrayDestructure() {
   ValueNode* iterator;
   {
     LazyDeoptFrameScope lazy_deopt_scope(
-        this, Builtin::kArrayDestructureLazyDeoptContinuation, {},
+        &reducer_, GetContext(),
+        Builtin::kArrayDestructureLazyDeoptContinuation, {},
         base::VectorOf<ValueNode*>(
             {the_hole, the_hole, minus_one_node, first_reg_node, count_node}));
     // This is not allowed to return DoneWithAbort (i.e. unconditionally eager
@@ -13543,7 +13443,8 @@ ReduceResult MaglevGraphBuilder::VisitArrayDestructure() {
   ValueNode* next_method;
   {
     LazyDeoptFrameScope lazy_deopt_scope(
-        this, Builtin::kArrayDestructureLazyDeoptContinuation, {},
+        &reducer_, GetContext(),
+        Builtin::kArrayDestructureLazyDeoptContinuation, {},
         base::VectorOf<ValueNode*>(
             {iterator, the_hole, minus_one_node, first_reg_node, count_node}));
     // This is not allowed to return DoneWithAbort (i.e. unconditionally eager
@@ -13596,7 +13497,8 @@ ReduceResult MaglevGraphBuilder::VisitArrayDestructure() {
     ValueNode* step_result;
     {
       LazyDeoptFrameScope lazy_deopt_scope(
-          this, Builtin::kArrayDestructureLazyDeoptContinuation, {},
+          &reducer_, GetContext(),
+          Builtin::kArrayDestructureLazyDeoptContinuation, {},
           base::VectorOf<ValueNode*>(
               {iterator, next_method, index_node, first_reg_node, count_node}));
       // The lazy deopt continuation will write only from `i` up to count, so
@@ -14533,7 +14435,7 @@ void MaglevGraphBuilder::EndLoopEffects(int loop_header) {
   // TODO(olivf): Update merge states dominated by the loop header with
   // information we know to be unaffected by the loop.
   if (merge_states_[loop_header] && merge_states_[loop_header]->is_loop()) {
-    merge_states_[loop_header]->set_loop_effects(loop_effects_);
+    merge_states_[loop_header]->AsLoopHeader()->set_loop_effects(loop_effects_);
   }
   if (loop_effects_stack_.size() > 1) {
     LoopEffects* inner_effects = loop_effects_;
@@ -14551,20 +14453,22 @@ ReduceResult MaglevGraphBuilder::VisitJumpLoop() {
   const int32_t loop_offset = iterator_.GetImmediateOperand(1);
   const FeedbackSlot feedback_slot = iterator_.GetSlotOperand(2);
   int target = iterator_.GetJumpTargetOffset();
+  BytecodeOffset jump_loop_osr_offset =
+      BytecodeOffset(iterator_.current_offset());
 
+  bool osr =
+      ShouldEmitOsrInterruptBudgetChecks(feedback_slot, jump_loop_osr_offset);
   if (ShouldEmitInterruptBudgetChecks()) {
     int reduction = relative_jump_bytecode_offset *
                     v8_flags.osr_from_maglev_interrupt_scale_factor;
+    BytecodeOffset osr_offset =
+        osr ? jump_loop_osr_offset : BytecodeOffset::None();
+    FeedbackSlot slot = osr ? feedback_slot : FeedbackSlot::Invalid();
     RETURN_IF_ABORT(AddNewNode<ReduceInterruptBudgetForLoop>(
-        {GetFeedbackCell()}, reduction > 0 ? reduction : 1));
+        {GetFeedbackCell()}, reduction > 0 ? reduction : 1, osr_offset,
+        loop_offset, slot));
   } else {
     RETURN_IF_ABORT(AddNewNode<HandleNoHeapWritesInterrupt>({}));
-  }
-
-  if (ShouldEmitOsrInterruptBudgetChecks()) {
-    RETURN_IF_ABORT(AddNewNode<TryOnStackReplacement>(
-        {GetClosure()}, loop_offset, feedback_slot,
-        BytecodeOffset(iterator_.current_offset()), compilation_unit_));
   }
 
   bool is_peeled_loop = loop_headers_to_peel_.Contains(target);
@@ -14575,7 +14479,7 @@ ReduceResult MaglevGraphBuilder::VisitJumpLoop() {
     ClobberAccumulator();
     if (in_optimistic_peeling_iteration()) {
       // Let's see if we can finish this loop without peeling it.
-      if (!merge_states_[target]->TryMergeLoop(
+      if (!merge_states_[target]->AsLoopHeader()->TryMergeLoop(
               broker(), graph(), is_tracing(), *compilation_unit(),
               current_interpreter_frame_, FinishLoopBlock,
               GetLatestCheckpointedFrame())) {
@@ -14587,9 +14491,9 @@ ReduceResult MaglevGraphBuilder::VisitJumpLoop() {
     }
   } else {
     BasicBlock* block = FinishLoopBlock();
-    merge_states_[target]->MergeLoop(graph(), is_tracing(), *compilation_unit(),
-                                     current_interpreter_frame_, block,
-                                     GetLatestCheckpointedFrame());
+    merge_states_[target]->AsLoopHeader()->MergeLoop(
+        graph(), is_tracing(), *compilation_unit(), current_interpreter_frame_,
+        block, GetLatestCheckpointedFrame());
     block->set_predecessor_id(merge_states_[target]->predecessor_count() - 1);
     if (is_peeled_loop) {
       DCHECK(!in_peeled_iteration());
@@ -15745,7 +15649,8 @@ MaybeReduceResult MaglevGraphBuilder::TryReduceGetIterator(
     // TryBuildLoadNamedProperty can eager deopt on e.g. a failed map check --
     // this shouldn't pick up this lazy deopt frame.
     LazyDeoptFrameScope deopt_continuation(
-        this, Builtin::kGetIteratorWithFeedbackLazyDeoptContinuation, {},
+        &reducer_, GetContext(),
+        Builtin::kGetIteratorWithFeedbackLazyDeoptContinuation, {},
         base::VectorOf<ValueNode*>({receiver, GetSmiConstant(call_slot_index),
                                     GetConstant(feedback())}));
     MaybeReduceResult result_load =
@@ -15769,14 +15674,15 @@ MaybeReduceResult MaglevGraphBuilder::TryReduceGetIterator(
     // If the call eager deopts (e.g. because of incorrect speculation of the
     // call target), we need to do the full call in the continuation.
     EagerDeoptFrameScope eager_deopt_continuation(
-        this, Builtin::kCallIteratorWithFeedback, {},
+        &reducer_, GetContext(), Builtin::kCallIteratorWithFeedback, {},
         base::VectorOf<ValueNode*>({receiver, iterator_method,
                                     GetSmiConstant(call_slot_index),
                                     GetConstant(feedback())}));
     // If the call lazy deopts, we can assume the call itself happened and the
     // continuation only has to do the post-call checks.
     LazyDeoptFrameScope deopt_continuation(
-        this, Builtin::kCallIteratorWithFeedbackLazyDeoptContinuation);
+        &reducer_, GetContext(),
+        Builtin::kCallIteratorWithFeedbackLazyDeoptContinuation);
 
     FeedbackSlot call_slot = FeedbackVector::ToSlot(call_slot_index);
     compiler::FeedbackSource call_feedback{feedback(), call_slot};
@@ -16111,7 +16017,8 @@ ReduceResult MaglevGraphBuilder::BuildForOfNextFallback(
   CallArguments args(ConvertReceiverMode::kAny, {iterator});
   {
     LazyDeoptFrameScope lazy_call_scope(
-        this, Builtin::kForOfNextResultDeoptContinuation, {}, {});
+        &reducer_, GetContext(), Builtin::kForOfNextResultDeoptContinuation, {},
+        {});
 
     GET_VALUE_OR_ABORT(result_object,
                        ReduceCall(next_method, args, feedback_source));
@@ -16120,14 +16027,15 @@ ReduceResult MaglevGraphBuilder::BuildForOfNextFallback(
   ValueNode* done;
   {
     EagerDeoptFrameScope eager_done_scope(
-        this, Builtin::kForOfNextResultDeoptContinuation, {},
+        &reducer_, GetContext(), Builtin::kForOfNextResultDeoptContinuation, {},
         base::VectorOf<ValueNode*>({result_object}));
 
     // Check if result is a JSReceiver.
     RETURN_IF_ABORT(BuildCheckJSReceiver(result_object));
 
     LazyDeoptFrameScope lazy_done_scope(
-        this, Builtin::kForOfNextLoadDoneLazyDeoptContinuation, {},
+        &reducer_, GetContext(),
+        Builtin::kForOfNextLoadDoneLazyDeoptContinuation, {},
         base::VectorOf<ValueNode*>({result_object}));
 
     // Load 'done' property.
@@ -16156,11 +16064,12 @@ ReduceResult MaglevGraphBuilder::BuildForOfNextFallback(
           },
           [&]() -> ReduceResult {
             EagerDeoptFrameScope eager_value_scope(
-                this, Builtin::kForOfNextLoadValueEagerDeoptContinuation, {},
+                &reducer_, GetContext(),
+                Builtin::kForOfNextLoadValueEagerDeoptContinuation, {},
                 base::VectorOf<ValueNode*>({result_object}));
             LazyDeoptFrameScope lazy_value_scope(
-                this, Builtin::kForOfNextLoadValueLazyDeoptContinuation, {},
-                {});
+                &reducer_, GetContext(),
+                Builtin::kForOfNextLoadValueLazyDeoptContinuation, {}, {});
             RETURN_IF_DONE(TryBuildLoadNamedProperty(
                 result_object, broker()->value_string(), value_feedback));
             return AddNewNode<LoadNamedGeneric>({GetContext(), result_object},
@@ -16551,11 +16460,9 @@ bool MaglevGraphBuilder::ShouldEmitInterruptBudgetChecks() {
   return v8_flags.force_emit_interrupt_budget_checks || v8_flags.turbofan;
 }
 
-bool MaglevGraphBuilder::ShouldEmitOsrInterruptBudgetChecks() {
+bool MaglevGraphBuilder::ShouldEmitOsrInterruptBudgetChecks(
+    FeedbackSlot feedback_slot, BytecodeOffset osr_offset) {
   if (!v8_flags.turbofan || !v8_flags.use_osr || !v8_flags.osr_from_maglev) {
-    return false;
-  }
-  if (!graph_->is_osr() && !v8_flags.always_osr_from_maglev) {
     return false;
   }
   // TODO(olivf) OSR from maglev requires lazy recompilation (see
@@ -16571,7 +16478,28 @@ bool MaglevGraphBuilder::ShouldEmitOsrInterruptBudgetChecks() {
   // same maglev osr code again, before reaching the turbofan OSR code in the
   // callee. The solution is to support osr from maglev without
   // deoptimization.
-  return !is_inline();
+  if (is_inline()) {
+    return false;
+  }
+  auto osr_from_maglev =
+      OsrFromMaglevStrategies::FromIntegral(v8_flags.osr_from_maglev);
+  if (osr_from_maglev.contains(OsrFromMaglevStrategy::kAlways)) {
+    return true;
+  }
+  if (osr_from_maglev.contains(OsrFromMaglevStrategy::kOnOsrCompile) &&
+      graph_->is_osr()) {
+    return true;
+  }
+  if (osr_from_maglev.contains(OsrFromMaglevStrategy::kIfLoopOsrd)) {
+    if (graph_->is_osr() && compilation_unit_->osr_offset() == osr_offset) {
+      return true;
+    }
+    std::optional<Tagged<Code>> maybe_osr_code =
+        compilation_unit_->feedback().object()->GetOptimizedOsrCode(
+            broker()->isolate(), {}, feedback_slot);
+    if (maybe_osr_code.has_value()) return true;
+  }
+  return false;
 }
 
 BasicBlock* MaglevGraphBuilder::CreateEdgeSplitBlock(

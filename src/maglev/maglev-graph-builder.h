@@ -10,6 +10,7 @@
 #include <utility>
 
 #include "src/base/base-export.h"
+#include "src/base/enum-set.h"
 #include "src/base/functional/function-ref.h"
 #include "src/base/logging.h"
 #include "src/base/vector.h"
@@ -92,9 +93,11 @@ class MaglevGraphBuilder {
   using MapInference = maglev::MapInference<MaglevGraphBuilder>;
   using CallArguments = ::v8::internal::maglev::CallArguments;
 
-  class EagerDeoptFrameScope;
+  using EagerDeoptFrameScope =
+      MaglevReducer<MaglevGraphBuilder>::EagerDeoptFrameScope;
 
-  class LazyDeoptFrameScope;
+  using LazyDeoptFrameScope =
+      MaglevReducer<MaglevGraphBuilder>::LazyDeoptFrameScope;
 
   class V8_NODISCARD LazyDeoptResultLocationScope {
    public:
@@ -195,9 +198,6 @@ class MaglevGraphBuilder {
     return current_interpreter_frame_;
   }
   MaglevCallerDetails* caller_details() const { return caller_details_; }
-  const LazyDeoptFrameScope* current_lazy_deopt_scope() const {
-    return current_lazy_deopt_scope_;
-  }
   compiler::JSHeapBroker* broker() const { return broker_; }
   LocalIsolate* local_isolate() const { return local_isolate_; }
 
@@ -220,6 +220,15 @@ class MaglevGraphBuilder {
   }
   std::tuple<DeoptFrame*, interpreter::Register, int> GetDeoptFrameForLazyDeopt(
       bool can_throw);
+
+  void OnBeginDeoptFrameScope() {
+    current_interpreter_frame_.virtual_objects().Snapshot();
+  }
+  void OnEndDeoptFrameScope() {
+    // We might have cached a checkpointed frame which includes this scope;
+    // reset it just in case.
+    latest_checkpointed_frame_ = nullptr;
+  }
 
   bool need_checkpointed_loop_entry() {
     return v8_flags.maglev_speculative_hoist_phi_untagging ||
@@ -280,8 +289,6 @@ class MaglevGraphBuilder {
   friend class Subgraph<MaglevGraphBuilder>;
 
   void InitializeScopeInfo();
-
-  class DeoptFrameScopeBase;
 
   // Helper class for building a subgraph with its own control flow, that is not
   // attached to any bytecode.
@@ -358,8 +365,16 @@ class MaglevGraphBuilder {
   }
 
  public:
+  enum class OsrFromMaglevStrategy {
+    kOnOsrCompile,
+    kIfLoopOsrd,
+    kAlways,
+  };
+  using OsrFromMaglevStrategies = base::EnumSet<OsrFromMaglevStrategy>;
+
   bool ShouldEmitInterruptBudgetChecks();
-  bool ShouldEmitOsrInterruptBudgetChecks();
+  bool ShouldEmitOsrInterruptBudgetChecks(FeedbackSlot feedback_slot,
+                                          BytecodeOffset osr_offset);
 
   bool MaglevIsTopTier() const { return !v8_flags.turbofan && v8_flags.maglev; }
   BasicBlock* CreateEdgeSplitBlock(BasicBlockRef& jump_targets,
@@ -1900,8 +1915,6 @@ class MaglevGraphBuilder {
   int inlining_id_ = SourcePosition::kNotInlined;
   uint32_t next_handler_table_index_ = 0;
 
-  EagerDeoptFrameScope* current_eager_deopt_scope_ = nullptr;
-  LazyDeoptFrameScope* current_lazy_deopt_scope_ = nullptr;
   LazyDeoptResultLocationScope* lazy_deopt_result_location_scope_ = nullptr;
 
   struct HandlerTableEntry {

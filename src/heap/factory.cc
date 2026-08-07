@@ -41,7 +41,6 @@
 #include "src/numbers/conversions.h"
 #include "src/numbers/hash-seed-inl.h"
 #include "src/objects/allocation-site-inl.h"
-#include "src/objects/allocation-site-scopes.h"
 #include "src/objects/api-callbacks.h"
 #include "src/objects/arguments-inl.h"
 #include "src/objects/bigint.h"
@@ -3395,6 +3394,16 @@ Handle<CppHeapExternalObject> Factory::NewCppHeapExternal(
   return handle(external, isolate());
 }
 
+Handle<CppGCManagedBase> Factory::NewCppGCManagedBase(
+    AllocationType allocation_type) {
+  Tagged<CppGCManagedBase> managed = Cast<CppGCManagedBase>(
+      AllocateRawWithAllocationSite(cpp_gc_managed_base_map(), allocation_type,
+                                    DirectHandle<AllocationSite>::null()));
+  managed->SetupLazilyInitializedCppHeapPointerField(
+      offsetof(CppGCManagedBase, cpp_gc_wrapper_));
+  return handle(managed, isolate());
+}
+
 DirectHandle<Code> Factory::NewCodeObjectForEmbeddedBuiltin(
     DirectHandle<Code> code, Address off_heap_entry) {
   CHECK_NOT_NULL(isolate()->embedded_blob_code());
@@ -4600,11 +4609,13 @@ Handle<JSObject> Factory::NewArgumentsObject(DirectHandle<JSFunction> callee,
                                              int length) {
   bool strict_mode_callee = is_strict(callee->shared()->language_mode()) ||
                             !callee->shared()->has_simple_parameters();
-  DirectHandle<Map> map = strict_mode_callee
-                              ? isolate()->strict_arguments_map()
-                              : isolate()->sloppy_arguments_map();
-  AllocationSiteUsageContext context(isolate(), Handle<AllocationSite>(),
-                                     false);
+  return strict_mode_callee ? NewStrictArgumentsObject(callee, length)
+                            : NewSloppyArgumentsObject(callee, length);
+}
+
+Handle<JSObject> Factory::NewStrictArgumentsObject(
+    DirectHandle<JSFunction> callee, int length) {
+  DirectHandle<Map> map = isolate()->strict_arguments_map();
   DCHECK(!isolate()->has_exception());
   Handle<JSObject> result = NewJSObjectFromMap(map);
   DirectHandle<Smi> value(Smi::FromInt(length), isolate());
@@ -4612,12 +4623,23 @@ Handle<JSObject> Factory::NewArgumentsObject(DirectHandle<JSFunction> callee,
                       StoreOrigin::kMaybeKeyed,
                       Just(ShouldThrow::kThrowOnError))
       .Assert();
-  if (!strict_mode_callee) {
-    Object::SetProperty(isolate(), result, callee_string(), callee,
-                        StoreOrigin::kMaybeKeyed,
-                        Just(ShouldThrow::kThrowOnError))
-        .Assert();
-  }
+  return result;
+}
+
+Handle<JSObject> Factory::NewSloppyArgumentsObject(
+    DirectHandle<JSFunction> callee, int length) {
+  DirectHandle<Map> map = isolate()->sloppy_arguments_map();
+  DCHECK(!isolate()->has_exception());
+  Handle<JSObject> result = NewJSObjectFromMap(map);
+  DirectHandle<Smi> value(Smi::FromInt(length), isolate());
+  Object::SetProperty(isolate(), result, length_string(), value,
+                      StoreOrigin::kMaybeKeyed,
+                      Just(ShouldThrow::kThrowOnError))
+      .Assert();
+  Object::SetProperty(isolate(), result, callee_string(), callee,
+                      StoreOrigin::kMaybeKeyed,
+                      Just(ShouldThrow::kThrowOnError))
+      .Assert();
   return result;
 }
 
@@ -5450,7 +5472,8 @@ Handle<JSFunction> Factory::JSFunctionBuilder::BuildRaw(
       // needed and maybe find some alternative to initialize it correctly
       // from the beginning.
       if (old_code->is_builtin()) {
-        jdt.SetCodeNoWriteBarrier(dispatch_handle, *code, isolate);
+        jdt.SetCodeKeepTieringRequest(dispatch_handle, *code, function, isolate,
+                                      mode);
         function->set_dispatch_handle(dispatch_handle, mode);
       } else {
         // On a transition of a feedback cell from one closure to many, make
@@ -5458,7 +5481,8 @@ Handle<JSFunction> Factory::JSFunctionBuilder::BuildRaw(
         // specialized, and if it was, eagerly re-optimize.
         if (cell_transition == FeedbackCell::kOneToMany &&
             old_code->is_context_specialized()) {
-          jdt.SetCodeNoWriteBarrier(dispatch_handle, *code, isolate);
+          jdt.SetCodeKeepTieringRequest(dispatch_handle, *code, function,
+                                        isolate, mode);
           function->set_dispatch_handle(dispatch_handle, mode);
           DCHECK(old_code->kind() == CodeKind::MAGLEV ||
                  old_code->kind() == CodeKind::TURBOFAN_JS);
