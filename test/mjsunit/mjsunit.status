@@ -2580,6 +2580,8 @@
   'regress/regress-430201b': [PASS, ['tsan', SKIP]],
   # Slow test due to generating heap snapshots on every GC.
   'regress/regress-494583765' : [SKIP],
+  # Exceeds expected timeouts.
+  'compiler/concurrent-string-ext-seq': [SKIP],
 }],  # variant == stress_concurrent_allocation
 
 ##############################################################################
@@ -3293,6 +3295,7 @@
   # Wasm code coverage is not currently supported.
   'regress/wasm/regress-488943662': [SKIP],
   'wasm/wasm-code-coverage': [SKIP],
+  'regress/wasm/regress-526163463': [SKIP],
 
   # Tests that require the sampler/profiler, which doesn't work on older kernel
   # versions if hardware sandboxing is active. See https://crbug.com/429173713.

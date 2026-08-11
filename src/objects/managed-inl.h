@@ -88,6 +88,10 @@ inline CppGCManagedWrapper* CppGCManagedBase::GetWrapper() const {
       CppHeapPointerTag::kCppGCManagedTag));
 }
 
+inline size_t CppGCManagedBase::estimated_size() const {
+  return GetWrapper()->estimated_size();
+}
+
 // static
 template <class CppType>
 Handle<CppGCManaged<CppType>> CppGCManaged<CppType>::Create(
@@ -98,7 +102,7 @@ Handle<CppGCManaged<CppType>> CppGCManaged<CppType>::Create(
       reinterpret_cast<v8::Isolate*>(isolate)
           ->GetCppHeap()
           ->GetAllocationHandle(),
-      CppType::kTypeID, estimated_size, shared_ptr_ptr,
+      TypeIdForManaged<CppType>::value, estimated_size, shared_ptr_ptr,
       detail::Destructor<CppType>, reinterpret_cast<v8::Isolate*>(isolate),
       isolate->cpp_heap_isolate_alive_token());
   Tagged<CppGCManagedBase> raw =
@@ -120,7 +124,8 @@ typename CppGCManaged<CppType>::Ptr CppGCManaged<CppType>::ptr() const {
 }
 
 template <class CppType>
-CppType* CppGCManaged<CppType>::raw() const {
+CppType* CppGCManaged<CppType>::raw(
+    const DisallowGarbageCollection& no_gc) const {
   return GetSharedPtr()->get();
 }
 
@@ -132,7 +137,7 @@ std::shared_ptr<CppType> CppGCManaged<CppType>::get() const {
 template <class CppType>
 std::shared_ptr<CppType>* CppGCManaged<CppType>::GetSharedPtr() const {
   auto wrapper = GetWrapper();
-  CHECK_EQ(wrapper->type_id(), CppType::kTypeID);
+  CHECK_EQ(wrapper->type_id(), TypeIdForManaged<CppType>::value);
   return reinterpret_cast<std::shared_ptr<CppType>*>(wrapper->shared_ptr_ptr());
 }
 

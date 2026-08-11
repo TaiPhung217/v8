@@ -64,12 +64,12 @@ namespace v8::internal {
   }
 
 // WasmModuleObject
-Tagged<Managed<wasm::NativeModule>> WasmModuleObject::managed_native_module()
-    const {
+Tagged<CppGCManaged<wasm::NativeModule>>
+WasmModuleObject::managed_native_module() const {
   return managed_native_module_.load();
 }
 void WasmModuleObject::set_managed_native_module(
-    Tagged<Managed<wasm::NativeModule>> value, WriteBarrierMode mode) {
+    Tagged<CppGCManaged<wasm::NativeModule>> value, WriteBarrierMode mode) {
   managed_native_module_.store(this, value, mode);
 }
 
@@ -78,7 +78,7 @@ void WasmModuleObject::set_script(Tagged<Script> value, WriteBarrierMode mode) {
   script_.store(this, value, mode);
 }
 
-Managed<wasm::NativeModule>::Ptr WasmModuleObject::native_module() {
+CppGCManaged<wasm::NativeModule>::Ptr WasmModuleObject::native_module() {
   return managed_native_module()->ptr();
 }
 
@@ -937,10 +937,10 @@ void WasmInternalFunction::set_call_target(WasmCodePointer code_pointer) {
 }
 
 // WasmCapiFunctionData
-Tagged<Foreign> WasmCapiFunctionData::embedder_data() const {
+Tagged<CppGCManagedBase> WasmCapiFunctionData::embedder_data() const {
   return embedder_data_.load();
 }
-void WasmCapiFunctionData::set_embedder_data(Tagged<Foreign> value,
+void WasmCapiFunctionData::set_embedder_data(Tagged<CppGCManagedBase> value,
                                              WriteBarrierMode mode) {
   embedder_data_.store(this, value, mode);
 }

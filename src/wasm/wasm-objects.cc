@@ -117,17 +117,18 @@ using WasmModule = wasm::WasmModule;
 DirectHandle<WasmModuleObject> WasmModuleObject::New(
     Isolate* isolate, std::shared_ptr<wasm::NativeModule> native_module,
     DirectHandle<Script> script) {
-  DirectHandle<Managed<wasm::NativeModule>> managed_native_module;
+  DirectHandle<CppGCManaged<wasm::NativeModule>> managed_native_module;
   if (script->type() == Script::Type::kWasm) {
     managed_native_module = direct_handle(
-        Cast<Managed<wasm::NativeModule>>(script->wasm_managed_native_module()),
+        Cast<CppGCManaged<wasm::NativeModule>>(
+            script->wasm_managed_native_module()),
         isolate);
   } else {
     const WasmModule* module = native_module->module();
     size_t memory_estimate =
         native_module->committed_code_space() +
         wasm::WasmCodeManager::EstimateNativeModuleMetaDataSize(module);
-    managed_native_module = Managed<wasm::NativeModule>::From(
+    managed_native_module = CppGCManaged<wasm::NativeModule>::Create(
         isolate, memory_estimate, std::move(native_module));
   }
   DirectHandle<WasmModuleObject> module_object = Cast<WasmModuleObject>(
@@ -160,7 +161,7 @@ DirectHandle<String> WasmModuleObject::ExtractUtf8StringFromModuleBytes(
 
 MaybeDirectHandle<String> WasmModuleObject::GetModuleNameOrNull(
     Isolate* isolate, DirectHandle<WasmModuleObject> module_object) {
-  Managed<wasm::NativeModule>::Ptr native_module =
+  CppGCManaged<wasm::NativeModule>::Ptr native_module =
       module_object->native_module();
   const WasmModule* module = native_module->module();
   if (!module->name.is_set()) return {};
@@ -171,7 +172,7 @@ MaybeDirectHandle<String> WasmModuleObject::GetModuleNameOrNull(
 MaybeDirectHandle<String> WasmModuleObject::GetFunctionNameOrNull(
     Isolate* isolate, DirectHandle<WasmModuleObject> module_object,
     uint32_t func_index) {
-  Managed<wasm::NativeModule>::Ptr native_module =
+  CppGCManaged<wasm::NativeModule>::Ptr native_module =
       module_object->native_module();
   const WasmModule* module = native_module->module();
   DCHECK_LT(func_index, module->functions.size());
@@ -187,7 +188,7 @@ base::Vector<const uint8_t> WasmModuleObject::GetRawFunctionName(
   if (func_index == wasm::kAnonymousFuncIndex) {
     return base::Vector<const uint8_t>({nullptr, 0});
   }
-  Managed<wasm::NativeModule>::Ptr native_mod = native_module();
+  CppGCManaged<wasm::NativeModule>::Ptr native_mod = native_module();
   const WasmModule* module = native_mod->module();
   DCHECK_GT(module->functions.size(), func_index);
   wasm::ModuleWireBytes wire_bytes(native_mod->wire_bytes());
@@ -242,7 +243,7 @@ DirectHandle<WasmTableObject> WasmTableObject::New(
 
   DCHECK_LE(initial, wasm::max_table_size());
   DirectHandle<FixedArray> entries = isolate->factory()->NewFixedArray(initial);
-  for (int i = 0; i < static_cast<int>(initial); ++i) {
+  for (uint32_t i = 0; i < initial; ++i) {
     entries->set(i, *initial_value);
   }
   bool is_function_table = canonical_type.IsFunctionType();
@@ -251,7 +252,8 @@ DirectHandle<WasmTableObject> WasmTableObject::New(
           ? isolate->factory()->NewWasmDispatchTable(initial, canonical_type)
           : isolate->factory()->empty_wasm_dispatch_table();
 
-  if (is_function_table && initial > 0 && IsWasmFuncRef(*initial_value)) {
+  if (is_function_table && initial > 0 && !IsWasmNull(*initial_value) &&
+      IsWasmFuncRef(*initial_value)) {
     DirectHandle<Object> external =
         WasmInternalFunction::GetOrCreateExternal(direct_handle(
             Cast<WasmFuncRef>(*initial_value)->internal(isolate), isolate));
@@ -2743,7 +2745,8 @@ bool WasmCapiFunction::IsWasmCapiFunction(Tagged<Object> object) {
 }
 
 DirectHandle<WasmCapiFunction> WasmCapiFunction::New(
-    Isolate* isolate, Address call_target, DirectHandle<Foreign> embedder_data,
+    Isolate* isolate, Address call_target,
+    DirectHandle<CppGCManagedBase> embedder_data,
     const wasm::CanonicalSig* sig) {
   // TODO(jkummerow): Install a JavaScript wrapper. For now, calling
   // these functions directly is unsupported; they can only be called

@@ -7,12 +7,9 @@
 
 #include <stdint.h>
 
-namespace v8::internal {
+#include "include/v8-internal.h"
 
-enum class ManagedTypeId : uint32_t {
-  kBackingStore,
-  kTestDeleteCounter,
-};
+namespace v8::internal {
 
 constexpr const char* ToString(ManagedTypeId type_id) {
   switch (type_id) {
@@ -20,6 +17,32 @@ constexpr const char* ToString(ManagedTypeId type_id) {
       return "BackingStore";
     case ManagedTypeId::kTestDeleteCounter:
       return "TestDeleteCounter";
+    case ManagedTypeId::kWasmStreaming:
+      return "WasmStreaming";
+    case ManagedTypeId::kWasmFuncData:
+      return "WasmFuncData";
+    case ManagedTypeId::kWasmManagedData:
+      return "WasmManagedData";
+    case ManagedTypeId::kWasmNativeModule:
+      return "WasmNativeModule";
+    case ManagedTypeId::kIcuBreakIterator:
+      return "IcuBreakIterator";
+    case ManagedTypeId::kIcuLocale:
+      return "IcuLocale";
+    case ManagedTypeId::kIcuSimpleDateFormat:
+      return "IcuSimpleDateFormat";
+    case ManagedTypeId::kIcuDateIntervalFormat:
+      return "IcuDateIntervalFormat";
+    case ManagedTypeId::kIcuRelativeDateTimeFormatter:
+      return "IcuRelativeDateTimeFormatter";
+    case ManagedTypeId::kIcuListFormatter:
+      return "IcuListFormatter";
+    case ManagedTypeId::kIcuCollator:
+      return "IcuCollator";
+    case ManagedTypeId::kIcuPluralRules:
+      return "IcuPluralRules";
+    case ManagedTypeId::kIcuLocalizedNumberFormatter:
+      return "IcuLocalizedNumberFormatter";
   }
 }
 

@@ -198,6 +198,8 @@ void HeapObject::HeapObjectVerify(Isolate* isolate) {
   // Cast away heapobject-ness so that the IsHeapObject test is non-trivial.
   CHECK(IsHeapObject(Tagged<Object>(this)));
 
+  if (IsInaccessible(Tagged<HeapObject>(this))) return;
+
   Object::VerifyPointer(isolate, map());
   CHECK(IsMap(map()));
 
@@ -295,6 +297,13 @@ void HeapObject::HeapObjectVerify(Isolate* isolate) {
     case WASM_EXCEPTION_PACKAGE_TYPE:
       Cast<WasmExceptionPackage>(this)->WasmExceptionPackageVerify(isolate);
       break;
+    case WASM_NULL_TYPE:
+      // With static roots, WasmNull is caught by the IsInaccessible(...) check
+      // before the switch.
+      // Without static roots, WasmNull is accessible, and we reach here.
+      DCHECK(!V8_STATIC_ROOTS_BOOL);
+      Cast<WasmNull>(this)->WasmNullVerify(isolate);
+      break;
 #endif  // V8_ENABLE_WEBASSEMBLY
     case JS_SET_KEY_VALUE_ITERATOR_TYPE:
     case JS_SET_VALUE_ITERATOR_TYPE:
@@ -387,6 +396,9 @@ void HeapObject::VerifyHeapPointer(Isolate* isolate, Tagged<Object> p) {
   // If you crashed here and {isolate->is_shared()}, there is a bug causing the
   // host of {p} to point to a non-shared object.
   CHECK(IsValidHeapObject(isolate->heap(), Cast<HeapObject>(p)));
+  // Before we can inspect instance types, we have to skip over inaccessible
+  // objects.
+  if (IsInaccessible(Cast<HeapObject>(p))) return;
   CHECK_IMPLIES(V8_EXTERNAL_CODE_SPACE_BOOL, !IsInstructionStream(p));
 }
 
@@ -2162,12 +2174,12 @@ void JSShadowRealm::JSShadowRealmVerify(Isolate* isolate) {
 #ifdef V8_INTL_SUPPORT
 void JSLocale::JSLocaleVerify(Isolate* isolate) {
   JSObjectVerify(isolate);
-  CHECK(IsForeign(icu_locale()));
+  CHECK(IsCppGCManagedBase(icu_locale()));
 }
 
 void JSCollator::JSCollatorVerify(Isolate* isolate) {
   JSObjectVerify(isolate);
-  CHECK(IsForeign(icu_collator()));
+  CHECK(IsCppGCManagedBase(icu_collator()));
   CHECK(IsUndefined(bound_compare()) || IsJSFunction(bound_compare()));
   CHECK(IsString(locale()));
 }
@@ -2186,9 +2198,9 @@ void JSV8BreakIterator::JSV8BreakIteratorVerify(Isolate* isolate) {
 void JSDateTimeFormat::JSDateTimeFormatVerify(Isolate* isolate) {
   JSObjectVerify(isolate);
   CHECK(IsString(locale()));
-  CHECK(IsForeign(icu_locale_.load()));
-  CHECK(IsForeign(icu_simple_date_format_.load()));
-  CHECK(IsForeign(icu_date_interval_format_.load()));
+  CHECK(IsCppGCManagedBase(icu_locale_.load()));
+  CHECK(IsCppGCManagedBase(icu_simple_date_format_.load()));
+  CHECK(IsCppGCManagedBase(icu_date_interval_format_.load()));
   CHECK(IsUndefined(bound_format()) || IsJSFunction(bound_format()));
   CHECK(IsSmi(flags_.load()));
 }
@@ -2203,21 +2215,21 @@ void JSDurationFormat::JSDurationFormatVerify(Isolate* isolate) {
   JSObjectVerify(isolate);
   CHECK(IsSmi(style_flags_.load()));
   CHECK(IsSmi(display_flags_.load()));
-  CHECK(IsForeign(icu_locale_.load()));
-  CHECK(IsForeign(icu_number_formatter_.load()));
+  CHECK(IsCppGCManagedBase(icu_locale_.load()));
+  CHECK(IsCppGCManagedBase(icu_number_formatter_.load()));
 }
 
 void JSListFormat::JSListFormatVerify(Isolate* isolate) {
   JSObjectVerify(isolate);
   CHECK(IsString(locale()));
-  CHECK(IsForeign(icu_formatter_.load()));
+  CHECK(IsCppGCManagedBase(icu_formatter_.load()));
   CHECK(IsSmi(flags_.load()));
 }
 
 void JSNumberFormat::JSNumberFormatVerify(Isolate* isolate) {
   JSObjectVerify(isolate);
   CHECK(IsString(locale()));
-  CHECK(IsForeign(icu_number_formatter_.load()));
+  CHECK(IsCppGCManagedBase(icu_number_formatter_.load()));
   CHECK(IsUndefined(bound_format()) || IsJSFunction(bound_format()));
 }
 
@@ -2225,22 +2237,22 @@ void JSPluralRules::JSPluralRulesVerify(Isolate* isolate) {
   JSObjectVerify(isolate);
   CHECK(IsString(locale()));
   CHECK(IsSmi(flags_.load()));
-  CHECK(IsForeign(icu_plural_rules_.load()));
-  CHECK(IsForeign(icu_number_formatter_.load()));
+  CHECK(IsCppGCManagedBase(icu_plural_rules_.load()));
+  CHECK(IsCppGCManagedBase(icu_number_formatter_.load()));
 }
 
 void JSRelativeTimeFormat::JSRelativeTimeFormatVerify(Isolate* isolate) {
   JSObjectVerify(isolate);
   CHECK(IsString(locale()));
   CHECK(IsString(numberingSystem()));
-  CHECK(IsForeign(icu_formatter_.load()));
+  CHECK(IsCppGCManagedBase(icu_formatter_.load()));
   CHECK(IsSmi(flags_.load()));
 }
 
 void JSSegmenter::JSSegmenterVerify(Isolate* isolate) {
   JSObjectVerify(isolate);
   CHECK(IsString(locale()));
-  CHECK(IsForeign(icu_break_iterator_.load()));
+  CHECK(IsCppGCManagedBase(icu_break_iterator_.load()));
   CHECK(IsSmi(flags_.load()));
 }
 
@@ -3434,7 +3446,7 @@ void WasmCapiFunctionData::WasmCapiFunctionDataVerify(Isolate* isolate) {
   CHECK(Is<WasmCapiFunctionData>(this));
   WasmFunctionDataVerify(isolate);
   Object::VerifyPointer(isolate, embedder_data_.load());
-  CHECK(IsForeign(embedder_data_.load()));
+  CHECK(Is<CppGCManagedBase>(embedder_data_.load()));
 }
 
 void WasmSuspenderObject::WasmSuspenderObjectVerify(Isolate* isolate) {

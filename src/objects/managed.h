@@ -83,6 +83,8 @@ class CppGCManagedWrapper final
 
   ManagedTypeId type_id() const { return type_id_; }
 
+  size_t estimated_size() const { return estimated_size_; }
+
   void* shared_ptr_ptr() const { return shared_ptr_ptr_; }
 
  private:
@@ -101,6 +103,8 @@ V8_OBJECT class CppGCManagedBase : public HeapObject {
   DECL_PRINTER(CppGCManagedBase)
 
   CppGCManagedWrapper* GetWrapper() const;
+
+  inline size_t estimated_size() const;
 
   class BodyDescriptor;
 
@@ -178,7 +182,8 @@ V8_OBJECT class CppGCManaged : public CppGCManagedBase {
 
   inline Ptr ptr() const;
 
-  inline CppType* raw() const;
+  inline CppType* raw(
+      const DisallowGarbageCollection& no_gc V8_LIFETIME_BOUND) const;
 
   inline std::shared_ptr<CppType> get() const;
 
@@ -197,6 +202,17 @@ V8_OBJECT class CppGCManaged : public CppGCManagedBase {
  private:
   inline std::shared_ptr<CppType>* GetSharedPtr() const;
 } V8_OBJECT_END;
+
+template <typename CppType>
+struct TypeIdForManaged {
+  static constexpr ManagedTypeId value = CppType::kTypeID;
+};
+
+#define ASSIGN_MANAGED_TYPE_ID_FOR_MANAGED(CppType, TypeId) \
+  template <>                                               \
+  struct TypeIdForManaged<CppType> {                        \
+    static constexpr ManagedTypeId value = TypeId;          \
+  };
 
 template <typename CppType>
 struct TagForManaged {
