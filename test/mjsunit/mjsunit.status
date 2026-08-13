@@ -563,6 +563,7 @@
   'compiler/regress-crbug-1323114': [SKIP],
   'wasm/wasm-gc-inlining': [SKIP], #BUG(397252111)
   'maglev/load_mutable_heap_slot_context_specialized': [SKIP],
+  'array-destructuring-lazy-deopt': [SKIP],
 
   # https://crbug.com/v8/13461
   'maglev/inner-function': [SKIP],
@@ -2133,7 +2134,8 @@
   # Wasm code coverage is not supported yet.
   'regress/wasm/regress-488943662': [SKIP],
   'wasm/wasm-code-coverage': [SKIP],
-  'wasm/regression-521715545': [SKIP]
+  'wasm/regression-521715545': [SKIP],
+  'regress/wasm/regress-526163463': [SKIP]
 }],  # arch in [ppc64, s390x]'
 
 ##############################################################################
@@ -2761,6 +2763,7 @@
   'regress/wasm/regress-349640002': [SKIP],
   'regress/wasm/regress-455832038': [SKIP],
   'regress/wasm/regress-483269968': [SKIP],
+  'regress/wasm/regress-543901836': [SKIP],
   'compiler/regress-347724915': [SKIP],
   'regress/regress-crbug-418520151': [SKIP],
   'regress/regress-535000102': [SKIP],

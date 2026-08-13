@@ -578,11 +578,13 @@ struct TagRange {
 enum class ManagedTypeId : uint32_t {
   kBackingStore,
   kTestDeleteCounter,
+  kTestDeleteNative,
   kWasmStreaming,
   kWasmFuncData,
   kWasmManagedData,
   kWasmNativeModule,
   kIcuBreakIterator,
+  kIcuBreakIteratorWithText,
   kIcuLocale,
   kIcuSimpleDateFormat,
   kIcuDateIntervalFormat,
@@ -591,25 +593,24 @@ enum class ManagedTypeId : uint32_t {
   kIcuCollator,
   kIcuPluralRules,
   kIcuLocalizedNumberFormatter,
+  kTemporalDuration,
+  kTemporalInstant,
+  kTemporalPlainDate,
+  kTemporalPlainTime,
+  kTemporalPlainDateTime,
+  kTemporalPlainYearMonth,
+  kTemporalPlainMonthDay,
+  kTemporalZonedDateTime,
+  kDisplayNamesInternal,
+  kD8Worker,
+  kD8ModuleEmbedderData,
+  kD8AsyncHooksWrap,
 };
 
 #define SHARED_MANAGED_TAG_LIST(V) V(WasmFutexManagedObjectWaitListTag)
 
-#define MANAGED_TAG_LIST(V)      \
-  SHARED_MANAGED_TAG_LIST(V)     \
-  V(GenericManagedTag)           \
-  V(IcuBreakIteratorWithTextTag) \
-  V(TemporalDurationTag)         \
-  V(TemporalInstantTag)          \
-  V(TemporalPlainDateTag)        \
-  V(TemporalPlainTimeTag)        \
-  V(TemporalPlainDateTimeTag)    \
-  V(TemporalPlainYearMonthTag)   \
-  V(TemporalPlainMonthDayTag)    \
-  V(TemporalZonedDateTimeTag)    \
-  V(DisplayNamesInternalTag)     \
-  V(D8WorkerTag)                 \
-  V(D8ModuleEmbedderDataTag)
+#define MANAGED_TAG_LIST(V)  \
+  SHARED_MANAGED_TAG_LIST(V)
 
 #define FOREIGN_TAG_LIST(V)                               \
   V(GenericForeignTag)                                    \
@@ -1035,10 +1036,7 @@ class Internals {
   // ExternalPointerTable, CppHeapPointerTable and TrustedPointerTable layout
   // guarantees.
   static const int kExternalEntityTableBasePointerOffset = 0;
-  static const int kSegmentedTableSegmentPoolSize = 4;
-  static const int kExternalEntityTableSize =
-      4 * kApiSystemPointerSize +
-      kSegmentedTableSegmentPoolSize * sizeof(uint32_t);
+  static const int kExternalEntityTableSize = 3 * kApiSystemPointerSize;
 
   // IsolateData layout guarantees.
   static const int kIsolateCageBaseOffset = 0;

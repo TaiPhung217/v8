@@ -107,6 +107,8 @@ extern macro Allocate(intptr): HeapObject;
 extern macro Allocate(intptr, constexpr AllocationFlag): HeapObject;
 }
 
+extern macro Retain(Object): void;
+
 macro NumberToInt32(input: Number): int32 {
   return Convert<int32>(input);
 }
@@ -832,35 +834,6 @@ builtin CallIndirectIC(
   return TargetAndImplicitArg{target: target, implicit_arg: implicitArg};
 }
 
-extern macro TryHasOwnProperty(HeapObject, Map, InstanceType, Name): never
-    labels Found, NotFound, Bailout;
-type OnNonExistent constexpr 'OnNonExistent';
-const kReturnUndefined: constexpr OnNonExistent
-    generates 'OnNonExistent::kReturnUndefined';
-extern macro SmiConstant(constexpr OnNonExistent): Smi;
-extern transitioning builtin GetPropertyWithReceiver(
-    implicit context: Context)(JSAny, Name, JSAny, Smi): JSAny;
-
-transitioning builtin WasmGetOwnProperty(
-    implicit context: Context)(object: Object, uniqueName: Name): JSAny {
-  try {
-    const heapObject: HeapObject =
-        TaggedToHeapObject(object) otherwise NotFound;
-    const receiver: JSReceiver =
-        Cast<JSReceiver>(heapObject) otherwise NotFound;
-    try {
-      TryHasOwnProperty(
-          receiver, receiver.map, receiver.instanceType, uniqueName)
-          otherwise Found, NotFound, NotFound;
-    } label Found {
-      return GetPropertyWithReceiver(
-          receiver, uniqueName, receiver, SmiConstant(kReturnUndefined));
-    }
-  } label NotFound deferred {
-    return Undefined;
-  }
-}
-
 // Trap builtins.
 
 builtin WasmTrap(error: Smi): JSAny {
@@ -1458,13 +1431,17 @@ transitioning builtin WasmStringViewWtf16Slice(
       let subslice = Subslice(
           slice, Convert<intptr>(start), Convert<intptr>(clampedLength))
           otherwise unreachable;
-      return AllocateNonEmptySeqOneByteString(
-          clampedLength, subslice.Iterator());
+      const result =
+          AllocateNonEmptySeqOneByteString(clampedLength, subslice.Iterator());
+      Retain(string);
+      return result;
     } label TwoByte(slice: ConstSlice<char16>) {
       let subslice = Subslice(
           slice, Convert<intptr>(start), Convert<intptr>(clampedLength))
           otherwise unreachable;
-      return StringFromTwoByteSlice(clampedLength, subslice);
+      const result = StringFromTwoByteSlice(clampedLength, subslice);
+      Retain(string);
+      return result;
     } label Runtime deferred {
       const context = LoadContextFromWasmOrJsFrame();
       tail runtime::WasmSubstring(

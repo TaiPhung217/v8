@@ -17,6 +17,8 @@ constexpr const char* ToString(ManagedTypeId type_id) {
       return "BackingStore";
     case ManagedTypeId::kTestDeleteCounter:
       return "TestDeleteCounter";
+    case ManagedTypeId::kTestDeleteNative:
+      return "TestDeleteNative";
     case ManagedTypeId::kWasmStreaming:
       return "WasmStreaming";
     case ManagedTypeId::kWasmFuncData:
@@ -27,6 +29,8 @@ constexpr const char* ToString(ManagedTypeId type_id) {
       return "WasmNativeModule";
     case ManagedTypeId::kIcuBreakIterator:
       return "IcuBreakIterator";
+    case ManagedTypeId::kIcuBreakIteratorWithText:
+      return "IcuBreakIteratorWithText";
     case ManagedTypeId::kIcuLocale:
       return "IcuLocale";
     case ManagedTypeId::kIcuSimpleDateFormat:
@@ -43,6 +47,30 @@ constexpr const char* ToString(ManagedTypeId type_id) {
       return "IcuPluralRules";
     case ManagedTypeId::kIcuLocalizedNumberFormatter:
       return "IcuLocalizedNumberFormatter";
+    case ManagedTypeId::kTemporalDuration:
+      return "TemporalDuration";
+    case ManagedTypeId::kTemporalInstant:
+      return "TemporalInstant";
+    case ManagedTypeId::kTemporalPlainDate:
+      return "TemporalPlainDate";
+    case ManagedTypeId::kTemporalPlainTime:
+      return "TemporalPlainTime";
+    case ManagedTypeId::kTemporalPlainDateTime:
+      return "TemporalPlainDateTime";
+    case ManagedTypeId::kTemporalPlainYearMonth:
+      return "TemporalPlainYearMonth";
+    case ManagedTypeId::kTemporalPlainMonthDay:
+      return "TemporalPlainMonthDay";
+    case ManagedTypeId::kTemporalZonedDateTime:
+      return "TemporalZonedDateTime";
+    case ManagedTypeId::kDisplayNamesInternal:
+      return "DisplayNamesInternal";
+    case ManagedTypeId::kD8Worker:
+      return "D8Worker";
+    case ManagedTypeId::kD8ModuleEmbedderData:
+      return "D8ModuleEmbedderData";
+    case ManagedTypeId::kD8AsyncHooksWrap:
+      return "D8AsyncHooksWrap";
   }
 }
 

@@ -897,16 +897,13 @@ DEFINE_BOOL(additive_safe_int_feedback, true,
             "Record AdditiveSafeInteger feedback")
 DEFINE_BOOL(turbolev_additive_safe_int_feedback, true,
             "Enable the use of AdditiveSafeInteger feedback for Turbolev")
-DEFINE_EXPERIMENTAL_FEATURE(
-    turbofan_additive_safe_int_feedback,
-    "enable the use of AdditiveSafeInteger feedback for TurboFan")
+DEFINE_BOOL_READONLY(
+    turbofan_additive_safe_int_feedback, false,
+    "Enable the use of AdditiveSafeInteger feedback for TurboFan")
 
 // Additive safe ints are only used by TurboFan or Turbolev.
 DEFINE_NEG_IMPLICATION(jitless, additive_safe_int_feedback)
 DEFINE_NEG_IMPLICATION(disable_optimizing_compilers, additive_safe_int_feedback)
-DEFINE_NEG_IMPLICATION(jitless, turbofan_additive_safe_int_feedback)
-DEFINE_NEG_IMPLICATION(disable_optimizing_compilers,
-                       turbofan_additive_safe_int_feedback)
 #else
 DEFINE_BOOL_READONLY(additive_safe_int_feedback, false,
                      "Record AdditiveSafeInteger feedback")
@@ -2181,6 +2178,16 @@ FOREACH_WASM_STAGING_FEATURE_FLAG(DECL_WASM_FLAG)
 FOREACH_WASM_SHIPPED_FEATURE_FLAG(DECL_WASM_FLAG)
 #undef DECL_WASM_FLAG
 #undef DECL_EXPERIMENTAL_WASM_FLAG
+
+// Note that it is a conscious decision not to use DEFINE_TEST_ONLY_FLAG as that
+// can't be used in combination with --fuzzing.
+// This flag allows to bypass casts which is unsafe. Note that this flag is
+// disabled in production and is disallowed for vulnerability reports. Creating
+// a crash with this flag enabled is neither a vulnerability, nor a stability
+// issue nor an issue at all.
+DEFINE_EXPERIMENTAL_FEATURE(
+    wasm_assume_ref_cast_desc_succeeds,
+    "assume ref.cast_desc always succeeds and skip the related type check")
 
 // Unsafe additions to the GC proposal for performance experiments.
 DEFINE_TEST_ONLY_FLAG(
@@ -4422,6 +4429,8 @@ DEFINE_NEG_IMPLICATION(disallow_unsafe_flags, redirect_code_traces)
 DEFINE_NEG_IMPLICATION(disallow_unsafe_flags, redirect_drumbrake_traces)
 #endif  // V8_ENABLE_DRUMBRAKE_TRACING
 DEFINE_NEG_IMPLICATION(disallow_unsafe_flags, wasm_assume_ref_cast_succeeds)
+DEFINE_NEG_IMPLICATION(disallow_unsafe_flags,
+                       wasm_assume_ref_cast_desc_succeeds)
 DEFINE_NEG_IMPLICATION(disallow_unsafe_flags, wasm_skip_null_checks)
 DEFINE_NEG_IMPLICATION(disallow_unsafe_flags, wasm_ref_cast_nop)
 DEFINE_NEG_IMPLICATION(disallow_unsafe_flags, wasm_skip_bounds_checks)
