@@ -828,9 +828,16 @@ class MaglevReducer {
   std::optional<int32_t> TryGetInt32Constant(ValueNode* value);
   std::optional<uint32_t> TryGetUint32Constant(ValueNode* value);
   std::optional<intptr_t> TryGetIntPtrConstant(ValueNode* value);
-  std::optional<Float64> TryGetFloat64OrHoleyFloat64Constant(
-      UseRepresentation use_repr, ValueNode* value,
-      TaggedToFloat64ConversionType conversion_type);
+  std::optional<Float64> TryGetFloat64Constant(ValueNode* value,
+                                               NodeType assumed_input_type) {
+    return TryGetFloatConstantImpl<UseRepresentation::kFloat64>(
+        value, assumed_input_type);
+  }
+  std::optional<Float64> TryGetHoleyFloat64Constant(
+      ValueNode* value, NodeType assumed_input_type) {
+    return TryGetFloatConstantImpl<UseRepresentation::kHoleyFloat64>(
+        value, assumed_input_type);
+  }
 
   template <typename MapContainer>
   MaybeReduceResult TryFoldCheckConstantMaps(ValueNode* object,
@@ -887,8 +894,10 @@ class MaglevReducer {
       compiler::JSObjectRef holder,
       compiler::PropertyAccessInfo const& access_info);
 
-  ReduceResult BuildNumberOrOddballToFloat64OrHoleyFloat64(
-      ValueNode* node, UseRepresentation use_rep, NodeType allowed_input_type);
+  ReduceResult BuildNumberOrOddballToFloat64(ValueNode* node,
+                                             NodeType assumed_input_type);
+  ReduceResult BuildNumberOrOddballToHoleyFloat64(ValueNode* node,
+                                                  NodeType assumed_input_type);
 
   ReduceResult BuildOrdinaryHasInstance(
       ValueNode* context, ValueNode* object, compiler::JSObjectRef callable,
@@ -1065,11 +1074,7 @@ class MaglevReducer {
   //
   // Deopts if the ToNumber is non-trivial.
   ReduceResult GetTruncatedInt32ForToNumber(ValueNode* value,
-                                            NodeType allowed_input_type);
-
-  ReduceResult GetFloat64OrHoleyFloat64Impl(ValueNode* value,
-                                            UseRepresentation use_rep,
-                                            NodeType allowed_input_type);
+                                            NodeType assumed_input_type);
 
   // Get a Float64 representation node whose value is equivalent to the given
   // node.
@@ -1081,16 +1086,16 @@ class MaglevReducer {
   ValueNode* TryGetFloat64(ValueNode* value);
 
   ReduceResult GetFloat64ForToNumber(ValueNode* value,
-                                     NodeType allowed_input_type);
+                                     NodeType assumed_input_type);
 
   // This does not emit any conversion.
   ValueNode* TryGetFloat64ForToNumber(ValueNode* value,
-                                      NodeType allowed_input_type);
+                                      NodeType assumed_input_type);
 
   ReduceResult GetHoleyFloat64(ValueNode* value);
 
   ReduceResult GetHoleyFloat64ForToNumber(ValueNode* value,
-                                          NodeType allowed_input_type);
+                                          NodeType assumed_input_type);
 
   ReduceResult EnsureInt32(ValueNode* value, bool can_be_heap_number = false);
 
@@ -1224,6 +1229,7 @@ class MaglevReducer {
   V(PromisePrototypeThen)                      \
   V(PromiseResolveTrampoline)                  \
   V(RegExpPrototypeTest)                       \
+  V(ReturnReceiver)                            \
   IEEE_754_UNARY_LIST(V)                       \
   IEEE_754_BINARY_LIST(V)                      \
   IF_INTL(V, StringPrototypeLocaleCompareIntl) \
@@ -1531,15 +1537,13 @@ class MaglevReducer {
 
   template <Operation kOperation>
   MaybeReduceResult TryFoldFloat64UnaryOperationForToNumber(
-      TaggedToFloat64ConversionType conversion_type, ValueNode* value);
+      NodeType assumed_input_type, ValueNode* value);
   template <Operation kOperation>
   MaybeReduceResult TryFoldFloat64BinaryOperationForToNumber(
-      TaggedToFloat64ConversionType conversion_type, ValueNode* left,
-      ValueNode* right);
+      NodeType assumed_input_type, ValueNode* left, ValueNode* right);
   template <Operation kOperation>
   MaybeReduceResult TryFoldFloat64BinaryOperationForToNumber(
-      TaggedToFloat64ConversionType conversion_type, ValueNode* left,
-      double cst_right);
+      NodeType assumed_input_type, ValueNode* left, double cst_right);
 
   MaybeReduceResult TryFoldFloat64Min(ValueNode* left, ValueNode* right);
   MaybeReduceResult TryFoldFloat64Max(ValueNode* left, ValueNode* right);
@@ -1747,6 +1751,10 @@ class MaglevReducer {
   friend class MapInference;
 
  private:
+  template <UseRepresentation kUseRepr>
+  std::optional<Float64> TryGetFloatConstantImpl(ValueNode* value,
+                                                 NodeType assumed_input_type);
+
   template <typename NodeT, typename... Args>
   ReduceResult EmitAbruptBlockEnd(std::initializer_list<ValueNode*> inputs,
                                   Args&&... args);

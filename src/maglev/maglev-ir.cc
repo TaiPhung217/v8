@@ -641,6 +641,83 @@ bool NodeBase::IsStructurallyEqualTo(const NodeBase* other) const {
   UNREACHABLE();
 }
 
+bool ValueNode::MayBeHoleOrUndefinedNan() const {
+  DCHECK(is_float64_or_holey_float64());
+  switch (opcode()) {
+    // Values built out of integers, values that were canonicalized already, and
+    // conversions that deopt on the hole and undefined NaNs.
+    case Opcode::kChangeInt32ToFloat64:
+    case Opcode::kChangeInt32ToHoleyFloat64:
+    case Opcode::kChangeIntPtrToFloat64:
+    case Opcode::kChangeUint32ToFloat64:
+    case Opcode::kChangeUint32ToHoleyFloat64:
+    case Opcode::kChangeFloat64ToHoleyFloat64:
+    case Opcode::kFloat64ToSilencedFloat64:
+    case Opcode::kCheckedHoleyFloat64ToFloat64:
+      return false;
+
+    // Both patterns are signalling NaNs, and an IEEE 754 arithmetic
+    // instruction never returns one: a NaN operand comes back quieted, and a
+    // NaN produced out of non-NaN operands is the default quiet NaN. This says
+    // nothing about the operations implemented as a call into C, which can
+    // hand back the NaN they were given.
+    case Opcode::kFloat64Add:
+    case Opcode::kFloat64SpeculateSafeAdd:
+    case Opcode::kFloat64Subtract:
+    case Opcode::kFloat64Multiply:
+    case Opcode::kFloat64Divide:
+    case Opcode::kFloat64Sqrt:
+      return false;
+
+    case Opcode::kFloat64Constant:
+      return Cast<Float64Constant>()->value().is_undefined_or_hole_nan();
+    case Opcode::kHoleyFloat64Constant:
+      return Cast<HoleyFloat64Constant>()->value().is_undefined_or_hole_nan();
+
+    // Casts that reinterpret the bits without touching them, so they carry the
+    // patterns exactly when their input does.
+    case Opcode::kReturnedValue:
+    case Opcode::kUnsafeHoleyFloat64ToFloat64:
+    case Opcode::kUnsafeFloat64ToHoleyFloat64:
+      return input_node(0)->MayBeHoleOrUndefinedNan();
+
+    // Reads of memory that anyone can write the patterns into, and operations
+    // on the bits rather than on the value: negating 0x7FF7'FFFF'FFF7'FFFF
+    // yields the hole, and Float64Max returns its input untouched when both
+    // inputs are the same node.
+    case Opcode::kLoadFloat64:
+    case Opcode::kLoadFixedDoubleArrayElement:
+    case Opcode::kLoadHoleyFixedDoubleArrayElement:
+    case Opcode::kLoadDoubleDataViewElement:
+    case Opcode::kLoadDoubleTypedArrayElement:
+    case Opcode::kLoadDoubleConstantTypedArrayElement:
+    case Opcode::kCheckedNumberToFloat64:
+    case Opcode::kCheckedNumberOrOddballToFloat64:
+    case Opcode::kCheckedNumberOrOddballToHoleyFloat64:
+    case Opcode::kUnsafeNumberToFloat64:
+    case Opcode::kUnsafeNumberOrOddballToFloat64:
+    case Opcode::kUnsafeNumberOrOddballToHoleyFloat64:
+    case Opcode::kFloat64Abs:
+    case Opcode::kFloat64Negate:
+    case Opcode::kFloat64Max:
+    case Opcode::kFloat64Min:
+    case Opcode::kFloat64Round:
+    case Opcode::kFloat64RoundToFloat32:
+    case Opcode::kFloat64Modulus:
+    case Opcode::kFloat64Exponentiate:
+    case Opcode::kFloat64Ieee754Unary:
+    case Opcode::kFloat64Ieee754Binary:
+    // TODO(victorgomes): Look through the inputs instead.
+    case Opcode::kPhi:
+      return true;
+
+    default:
+      // Every node that can produce a Float64 or HoleyFloat64 value has to be
+      // classified above.
+      UNREACHABLE();
+  }
+}
+
 void ValueNode::SetHint(compiler::InstructionOperand hint) {
   DCHECK_EQ(state_, kRegallocInfo);
   auto node_info = regalloc_info();
@@ -975,6 +1052,11 @@ void StoreTaggedFieldNoWriteBarrier::VerifyInputs() const {
 void InlinedAllocation::VerifyInputs() const {
   Base::VerifyInputs();
   CheckInputIs(0, Opcode::kAllocationBlock);
+}
+
+void UnsafeFloat64ToHoleyFloat64::VerifyInputs() const {
+  Base::VerifyInputs();
+  CHECK(!input_node(0)->UnwrapIdentities()->MayBeHoleOrUndefinedNan());
 }
 
 AllocationBlock* InlinedAllocation::allocation_block() {
@@ -2070,93 +2152,84 @@ void CheckedSmiDecrement::GenerateCode(MaglevAssembler* masm,
 
 namespace {
 
-void JumpToFailIfNotHeapNumberOrOddball(
-    MaglevAssembler* masm, Register value,
-    TaggedToFloat64ConversionType conversion_type, Label* fail) {
+void JumpToFailIfNotHeapNumberOrOddball(MaglevAssembler* masm, Register value,
+                                        NodeType assumed_input_type,
+                                        Label* fail) {
   if (!fail && !v8_flags.debug_code) return;
 
   static_assert(InstanceType::HEAP_NUMBER_TYPE + 1 ==
                 InstanceType::ODDBALL_TYPE);
-  switch (conversion_type) {
-    case TaggedToFloat64ConversionType::kNumberOrBoolean: {
-      // Check if HeapNumber or Boolean, jump to fail otherwise.
-      MaglevAssembler::TemporaryRegisterScope temps(masm);
-      Register map = temps.AcquireScratch();
+  if (NodeTypeIs(assumed_input_type, NodeType::kNumber)) {
+    // Check if HeapNumber, jump to fail otherwise.
+    if (fail) {
+      __ JumpIfNotObjectType(value, InstanceType::HEAP_NUMBER_TYPE, fail);
+    } else {
+      __ AssertObjectType(value, InstanceType::HEAP_NUMBER_TYPE,
+                          AbortReason::kUnexpectedValue);
+    }
+  } else if (NodeTypeIs(assumed_input_type, NodeType::kNumberOrBoolean)) {
+    // Check if HeapNumber or Boolean, jump to fail otherwise.
+    MaglevAssembler::TemporaryRegisterScope temps(masm);
+    Register map = temps.AcquireScratch();
 
 #if V8_STATIC_ROOTS_BOOL
-      static_assert(StaticReadOnlyRoot::kBooleanMap + Map::kSize ==
-                    StaticReadOnlyRoot::kHeapNumberMap);
-      __ LoadMapForCompare(map, value);
-      if (fail) {
-        __ JumpIfObjectNotInRange(map, StaticReadOnlyRoot::kBooleanMap,
-                                  StaticReadOnlyRoot::kHeapNumberMap, fail);
-      } else {
-        __ AssertObjectInRange(map, StaticReadOnlyRoot::kBooleanMap,
-                               StaticReadOnlyRoot::kHeapNumberMap,
-                               AbortReason::kUnexpectedValue);
-      }
+    static_assert(StaticReadOnlyRoot::kBooleanMap + Map::kSize ==
+                  StaticReadOnlyRoot::kHeapNumberMap);
+    __ LoadMapForCompare(map, value);
+    if (fail) {
+      __ JumpIfObjectNotInRange(map, StaticReadOnlyRoot::kBooleanMap,
+                                StaticReadOnlyRoot::kHeapNumberMap, fail);
+    } else {
+      __ AssertObjectInRange(map, StaticReadOnlyRoot::kBooleanMap,
+                             StaticReadOnlyRoot::kHeapNumberMap,
+                             AbortReason::kUnexpectedValue);
+    }
 #else
-      Label done;
-      __ LoadMap(map, value);
-      __ CompareRoot(map, RootIndex::kHeapNumberMap);
-      __ JumpIf(kEqual, &done);
-      __ CompareRoot(map, RootIndex::kBooleanMap);
-      if (fail) {
-        __ JumpIf(kNotEqual, fail);
-      } else {
-        __ Assert(kEqual, AbortReason::kUnexpectedValue);
-      }
-      __ bind(&done);
+    Label done;
+    __ LoadMap(map, value);
+    __ CompareRoot(map, RootIndex::kHeapNumberMap);
+    __ JumpIf(kEqual, &done);
+    __ CompareRoot(map, RootIndex::kBooleanMap);
+    if (fail) {
+      __ JumpIf(kNotEqual, fail);
+    } else {
+      __ Assert(kEqual, AbortReason::kUnexpectedValue);
+    }
+    __ bind(&done);
 #endif
-      break;
+  } else if (NodeTypeIs(assumed_input_type, NodeType::kNumberOrUndefined)) {
+    // Check if HeapNumber or Undefined, jump to fail otherwise.
+    MaglevAssembler::TemporaryRegisterScope temps(masm);
+    Register map = temps.AcquireScratch();
+
+    Label done;
+    __ LoadMap(map, value);
+    __ CompareRoot(map, RootIndex::kHeapNumberMap);
+    __ JumpIf(kEqual, &done);
+    __ CompareRoot(map, RootIndex::kUndefinedMap);
+    if (fail) {
+      __ JumpIf(kNotEqual, fail);
+    } else {
+      __ Assert(kEqual, AbortReason::kUnexpectedValue);
     }
-
-    case TaggedToFloat64ConversionType::kNumberOrUndefined: {
-      // Check if HeapNumber or Undefined, jump to fail otherwise.
-      MaglevAssembler::TemporaryRegisterScope temps(masm);
-      Register map = temps.AcquireScratch();
-
-      Label done;
-      __ LoadMap(map, value);
-      __ CompareRoot(map, RootIndex::kHeapNumberMap);
-      __ JumpIf(kEqual, &done);
-      __ CompareRoot(map, RootIndex::kUndefinedMap);
-      if (fail) {
-        __ JumpIf(kNotEqual, fail);
-      } else {
-        __ Assert(kEqual, AbortReason::kUnexpectedValue);
-      }
-      __ bind(&done);
-      break;
+    __ bind(&done);
+  } else {
+    DCHECK(NodeTypeIs(assumed_input_type, NodeType::kNumberOrOddball));
+    // Check if HeapNumber or Oddball, jump to fail otherwise.
+    if (fail) {
+      __ JumpIfObjectTypeNotInRange(value, InstanceType::HEAP_NUMBER_TYPE,
+                                    InstanceType::ODDBALL_TYPE, fail);
+    } else {
+      __ AssertObjectTypeInRange(value, InstanceType::HEAP_NUMBER_TYPE,
+                                 InstanceType::ODDBALL_TYPE,
+                                 AbortReason::kUnexpectedValue);
     }
-
-    case TaggedToFloat64ConversionType::kNumberOrOddball:
-      // Check if HeapNumber or Oddball, jump to fail otherwise.
-      if (fail) {
-        __ JumpIfObjectTypeNotInRange(value, InstanceType::HEAP_NUMBER_TYPE,
-                                      InstanceType::ODDBALL_TYPE, fail);
-      } else {
-        __ AssertObjectTypeInRange(value, InstanceType::HEAP_NUMBER_TYPE,
-                                   InstanceType::ODDBALL_TYPE,
-                                   AbortReason::kUnexpectedValue);
-      }
-      break;
-    case TaggedToFloat64ConversionType::kOnlyNumber:
-      // Check if HeapNumber, jump to fail otherwise.
-      if (fail) {
-        __ JumpIfNotObjectType(value, InstanceType::HEAP_NUMBER_TYPE, fail);
-      } else {
-        __ AssertObjectType(value, InstanceType::HEAP_NUMBER_TYPE,
-                            AbortReason::kUnexpectedValue);
-      }
-      break;
   }
 }
 
 void TryUnboxNumberOrOddball(MaglevAssembler* masm, DoubleRegister dst,
                              Register clobbered_src,
-                             TaggedToFloat64ConversionType conversion_type,
-                             Label* fail) {
+                             NodeType assumed_input_type, Label* fail) {
   Label is_not_smi, done;
   // Check if Smi.
   __ JumpIfNotSmi(clobbered_src, &is_not_smi, Label::kNear);
@@ -2165,7 +2238,7 @@ void TryUnboxNumberOrOddball(MaglevAssembler* masm, DoubleRegister dst,
   __ Int32ToDouble(dst, clobbered_src);
   __ Jump(&done);
   __ bind(&is_not_smi);
-  JumpToFailIfNotHeapNumberOrOddball(masm, clobbered_src, conversion_type,
+  JumpToFailIfNotHeapNumberOrOddball(masm, clobbered_src, assumed_input_type,
                                      fail);
   __ LoadHeapNumberOrOddballValue(dst, clobbered_src);
   __ bind(&done);
@@ -2181,7 +2254,7 @@ void CheckedNumberOrOddballToFloat64::GenerateCode(
     MaglevAssembler* masm, const ProcessingState& state) {
   Register value = ToRegister(ValueInput());
   TryUnboxNumberOrOddball(masm, ToDoubleRegister(result()), value,
-                          conversion_type(),
+                          assumed_input_type(),
                           __ GetDeoptLabel(this, deoptimize_reason()));
 }
 
@@ -2193,8 +2266,7 @@ void CheckedNumberToFloat64::GenerateCode(MaglevAssembler* masm,
                                           const ProcessingState& state) {
   Register value = ToRegister(ValueInput());
   TryUnboxNumberOrOddball(
-      masm, ToDoubleRegister(result()), value,
-      TaggedToFloat64ConversionType::kOnlyNumber,
+      masm, ToDoubleRegister(result()), value, NodeType::kNumber,
       __ GetDeoptLabel(this, DeoptimizeReason::kNotANumber));
 }
 
@@ -2216,7 +2288,7 @@ void CheckedNumberOrOddballToHoleyFloat64::GenerateCode(
   __ Int32ToDouble(dst, src);
   __ Jump(&done);
   __ bind(&is_not_smi);
-  JumpToFailIfNotHeapNumberOrOddball(masm, src, conversion_type(), fail);
+  JumpToFailIfNotHeapNumberOrOddball(masm, src, assumed_input_type(), fail);
   __ LoadHeapNumberOrOddballValue(dst, src);
   __ JumpIfNotObjectType(src, InstanceType::HEAP_NUMBER_TYPE, &done,
                          Label::kNear);
@@ -2232,7 +2304,7 @@ void UnsafeNumberOrOddballToFloat64::GenerateCode(
     MaglevAssembler* masm, const ProcessingState& state) {
   Register value = ToRegister(ValueInput());
   TryUnboxNumberOrOddball(masm, ToDoubleRegister(result()), value,
-                          conversion_type(), nullptr);
+                          assumed_input_type(), nullptr);
 }
 
 void UnsafeNumberToFloat64::SetValueLocationConstraints() {
@@ -2243,7 +2315,7 @@ void UnsafeNumberToFloat64::GenerateCode(MaglevAssembler* masm,
                                          const ProcessingState& state) {
   Register value = ToRegister(ValueInput());
   TryUnboxNumberOrOddball(masm, ToDoubleRegister(result()), value,
-                          TaggedToFloat64ConversionType::kOnlyNumber, nullptr);
+                          NodeType::kNumber, nullptr);
 }
 
 void UnsafeNumberOrOddballToHoleyFloat64::SetValueLocationConstraints() {
@@ -2263,7 +2335,7 @@ void UnsafeNumberOrOddballToHoleyFloat64::GenerateCode(
   __ Int32ToDouble(dst, src);
   __ Jump(&done);
   __ bind(&is_not_smi);
-  JumpToFailIfNotHeapNumberOrOddball(masm, src, conversion_type(), nullptr);
+  JumpToFailIfNotHeapNumberOrOddball(masm, src, assumed_input_type(), nullptr);
   __ LoadHeapNumberOrOddballValue(dst, src);
   __ JumpIfNotObjectType(src, InstanceType::HEAP_NUMBER_TYPE, &done,
                          Label::kNear);
@@ -2289,8 +2361,8 @@ void CheckedNumberToInt32::GenerateCode(MaglevAssembler* masm,
   __ Jump(&done);
   __ bind(&is_not_smi);
   // Check if Number.
-  JumpToFailIfNotHeapNumberOrOddball(
-      masm, value, TaggedToFloat64ConversionType::kOnlyNumber, deopt_label);
+  JumpToFailIfNotHeapNumberOrOddball(masm, value, NodeType::kNumber,
+                                     deopt_label);
   __ LoadHeapNumberValue(double_value, value);
   __ TryTruncateDoubleToInt32(ToRegister(result()), double_value, deopt_label);
   __ bind(&done);
@@ -2298,9 +2370,10 @@ void CheckedNumberToInt32::GenerateCode(MaglevAssembler* masm,
 
 namespace {
 
-void EmitTruncateNumberOrOddballToInt32(
-    MaglevAssembler* masm, Register value, Register result_reg,
-    TaggedToFloat64ConversionType conversion_type, Label* not_a_number) {
+void EmitTruncateNumberOrOddballToInt32(MaglevAssembler* masm, Register value,
+                                        Register result_reg,
+                                        NodeType assumed_input_type,
+                                        Label* not_a_number) {
   Label is_not_smi, done;
   // Check if Smi.
   __ JumpIfNotSmi(value, &is_not_smi, Label::kNear);
@@ -2308,7 +2381,7 @@ void EmitTruncateNumberOrOddballToInt32(
   __ SmiToInt32(value);
   __ Jump(&done, Label::kNear);
   __ bind(&is_not_smi);
-  JumpToFailIfNotHeapNumberOrOddball(masm, value, conversion_type,
+  JumpToFailIfNotHeapNumberOrOddball(masm, value, assumed_input_type,
                                      not_a_number);
   MaglevAssembler::TemporaryRegisterScope temps(masm);
   DoubleRegister double_value = temps.AcquireScratchDouble();
@@ -2396,8 +2469,8 @@ void TruncateCheckedNumberOrOddballToInt32::GenerateCode(
   DCHECK_EQ(value, result_reg);
   Label* deopt_label =
       __ GetDeoptLabel(this, DeoptimizeReason::kNotANumberOrOddball);
-  EmitTruncateNumberOrOddballToInt32(masm, value, result_reg, conversion_type(),
-                                     deopt_label);
+  EmitTruncateNumberOrOddballToInt32(masm, value, result_reg,
+                                     assumed_input_type(), deopt_label);
 }
 
 void TruncateUnsafeNumberOrOddballToInt32::SetValueLocationConstraints() {
@@ -2409,8 +2482,8 @@ void TruncateUnsafeNumberOrOddballToInt32::GenerateCode(
   Register value = ToRegister(ValueInput());
   Register result_reg = ToRegister(result());
   DCHECK_EQ(value, result_reg);
-  EmitTruncateNumberOrOddballToInt32(masm, value, result_reg, conversion_type(),
-                                     nullptr);
+  EmitTruncateNumberOrOddballToInt32(masm, value, result_reg,
+                                     assumed_input_type(), nullptr);
 }
 
 void ChangeInt32ToFloat64::SetValueLocationConstraints() {
@@ -3584,52 +3657,18 @@ void LoadHoleyFixedDoubleArrayElement::GenerateCode(
   __ LoadFixedDoubleArrayElement(result_reg, elements, index);
 }
 
-void LoadHoleyFixedDoubleArrayElementCheckedNotHole::
-    SetValueLocationConstraints() {
-  UseRegister(ElementsInput());
-  UseRegister(IndexInput());
-  DefineAsRegister(this);
-  set_temporaries_needed(1);
-}
-void LoadHoleyFixedDoubleArrayElementCheckedNotHole::GenerateCode(
-    MaglevAssembler* masm, const ProcessingState& state) {
-  MaglevAssembler::TemporaryRegisterScope temps(masm);
-  Register elements = ToRegister(ElementsInput());
-  Register index = ToRegister(IndexInput());
-  DoubleRegister result_reg = ToDoubleRegister(result());
-  __ LoadFixedDoubleArrayElement(result_reg, elements, index);
-  __ JumpIfHoleNan(result_reg, temps.Acquire(),
-                   __ GetDeoptLabel(this, DeoptimizeReason::kHole));
-}
-
-#ifdef V8_ENABLE_UNDEFINED_DOUBLE
-void LoadHoleyFixedDoubleArrayElementCheckedNotUndefinedOrHole::
-    SetValueLocationConstraints() {
-  UseRegister(ElementsInput());
-  UseRegister(IndexInput());
-  DefineAsRegister(this);
-  set_temporaries_needed(1);
-}
-void LoadHoleyFixedDoubleArrayElementCheckedNotUndefinedOrHole::GenerateCode(
-    MaglevAssembler* masm, const ProcessingState& state) {
-  MaglevAssembler::TemporaryRegisterScope temps(masm);
-  Register elements = ToRegister(ElementsInput());
-  Register index = ToRegister(IndexInput());
-  DoubleRegister result_reg = ToDoubleRegister(result());
-  __ LoadFixedDoubleArrayElement(result_reg, elements, index);
-  // TODO(nicohartmann): Should have a combined JumpIfUndefinedOrHoleNan.
-  Register scratch = temps.Acquire();
-  Label* deopt_label = __ GetDeoptLabel(this, DeoptimizeReason::kHole);
-  __ JumpIfUndefinedNan(result_reg, scratch, deopt_label);
-  __ JumpIfHoleNan(result_reg, scratch, deopt_label);
-}
-#endif  // V8_ENABLE_UNDEFINED_DOUBLE
-
 template <typename Derived, ValueRepresentation value_input_rep>
 void StoreFixedDoubleArrayElementT<
     Derived, value_input_rep>::SetValueLocationConstraints() {
   UseRegister(ElementsInput());
   UseRegister(IndexInput());
+#ifdef V8_ENABLE_UNDEFINED_DOUBLE
+  if constexpr (value_input_rep == ValueRepresentation::kHoleyFloat64) {
+    UseAndClobberRegister(ValueInput());
+    this->set_temporaries_needed(1);
+    return;
+  }
+#endif  // V8_ENABLE_UNDEFINED_DOUBLE
   UseRegister(ValueInput());
 }
 template <typename Derived, ValueRepresentation value_input_rep>
@@ -3644,6 +3683,16 @@ void StoreFixedDoubleArrayElementT<Derived, value_input_rep>::GenerateCode(
     __ CompareInt32AndAssert(index, 0, kUnsignedGreaterThanEqual,
                              AbortReason::kUnexpectedNegativeValue);
   }
+#ifdef V8_ENABLE_UNDEFINED_DOUBLE
+  if constexpr (value_input_rep == ValueRepresentation::kHoleyFloat64) {
+    MaglevAssembler::TemporaryRegisterScope temps(masm);
+    Register scratch = temps.Acquire();
+    Label done;
+    __ JumpIfNotHoleNan(value, scratch, &done);
+    __ Move(value, UndefinedNan());
+    __ bind(&done);
+  }
+#endif  // V8_ENABLE_UNDEFINED_DOUBLE
   __ StoreFixedDoubleArrayElement(elements, index, value);
 }
 
@@ -6965,9 +7014,8 @@ void CheckedNumberOrOddballToUint8Clamped::GenerateCode(
   // Check if HeapNumber or Oddball, deopt otherwise.
   Label* deopt_label =
       __ GetDeoptLabel(this, DeoptimizeReason::kNotANumberOrOddball);
-  JumpToFailIfNotHeapNumberOrOddball(
-      masm, value, TaggedToFloat64ConversionType::kNumberOrOddball,
-      deopt_label);
+  JumpToFailIfNotHeapNumberOrOddball(masm, value, NodeType::kNumberOrOddball,
+                                     deopt_label);
   // ToNumber of an oddball reads its to_number_raw field, which lives at the
   // same offset as HeapNumber::value_, so the same load works for both.
   __ LoadHeapNumberOrOddballValue(double_value, value);

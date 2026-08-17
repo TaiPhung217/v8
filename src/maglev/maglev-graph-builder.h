@@ -164,6 +164,9 @@ class MaglevGraphBuilder {
   Float64Constant* GetFloat64Constant(Float64 constant) {
     return graph()->GetFloat64Constant(constant);
   }
+  HoleyFloat64Constant* GetHoleyFloat64Constant(Float64 constant) {
+    return graph()->GetHoleyFloat64Constant(constant);
+  }
   RootConstant* GetRootConstant(RootIndex index) {
     return graph()->GetRootConstant(index);
   }
@@ -627,12 +630,12 @@ class MaglevGraphBuilder {
   //
   // Deopts if the ToNumber is non-trivial.
   ReduceResult GetTruncatedInt32ForToNumber(ValueNode* value,
-                                            NodeType allowed_input_type);
+                                            NodeType assumed_input_type);
 
   ReduceResult GetTruncatedInt32ForToNumber(interpreter::Register reg,
-                                            NodeType allowed_input_type) {
+                                            NodeType assumed_input_type) {
     return GetTruncatedInt32ForToNumber(current_interpreter_frame_.get(reg),
-                                        allowed_input_type);
+                                        assumed_input_type);
   }
 
   // Get an Int32 representation node whose value is equivalent to the ToUint8
@@ -663,9 +666,8 @@ class MaglevGraphBuilder {
 
   std::optional<int32_t> TryGetInt32Constant(ValueNode* value);
   std::optional<uint32_t> TryGetUint32Constant(ValueNode* value);
-  std::optional<Float64> TryGetFloat64OrHoleyFloat64Constant(
-      UseRepresentation use_repr, ValueNode* value,
-      TaggedToFloat64ConversionType conversion_type);
+  std::optional<Float64> TryGetFloat64Constant(ValueNode* value,
+                                               NodeType assumed_input_type);
   MaybeHandle<String> TryGetStringConstant(ValueNode* value);
 
   // Get an Int32 representation node whose value is equivalent to the given
@@ -676,10 +678,6 @@ class MaglevGraphBuilder {
 
   ReduceResult EnsureInt32(ValueNode* value, bool can_be_heap_number = false);
   ReduceResult EnsureInt32(interpreter::Register reg);
-
-#ifdef V8_ENABLE_UNDEFINED_DOUBLE
-  std::optional<double> TryGetHoleyFloat64Constant(ValueNode* value);
-#endif  // V8_ENABLE_UNDEFINED_DOUBLE
 
   // Get a Float64 representation node whose value is equivalent to the given
   // node.
@@ -697,9 +695,9 @@ class MaglevGraphBuilder {
   // Deopts if the ToNumber value is not exactly representable as a Float64, or
   // the ToNumber is non-trivial.
   ReduceResult GetFloat64ForToNumber(ValueNode* value,
-                                     NodeType allowed_input_type);
+                                     NodeType assumed_input_type);
   ReduceResult GetFloat64ForToNumber(interpreter::Register reg,
-                                     NodeType allowed_input_type);
+                                     NodeType assumed_input_type);
 
   ValueNode* GetAccumulator() {
     return current_interpreter_frame_.get(
@@ -714,9 +712,9 @@ class MaglevGraphBuilder {
   }
 
   ReduceResult GetAccumulatorTruncatedInt32ForToNumber(
-      NodeType allowed_input_type) {
+      NodeType assumed_input_type) {
     return GetTruncatedInt32ForToNumber(
-        interpreter::Register::virtual_accumulator(), allowed_input_type);
+        interpreter::Register::virtual_accumulator(), assumed_input_type);
   }
 
   ValueNode* GetAccumulatorUint8ClampedForToNumber() {
@@ -724,12 +722,28 @@ class MaglevGraphBuilder {
         interpreter::Register::virtual_accumulator());
   }
 
-  ReduceResult GetAccumulatorFloat64ForToNumber(NodeType allowed_input_type) {
+  ReduceResult GetAccumulatorFloat64ForToNumber(NodeType assumed_input_type) {
     return GetFloat64ForToNumber(interpreter::Register::virtual_accumulator(),
-                                 allowed_input_type);
+                                 assumed_input_type);
   }
 
-  ReduceResult GetSilencedNaN(ValueNode* value);
+  // An operand that is already HoleyFloat64 can keep its undefined and let the
+  // arithmetic turn it into a NaN, instead of deopting on it.
+  NodeType AllowUndefinedInputForArithmetic(interpreter::Register reg,
+                                            NodeType assumed_input_type) {
+    if (NodeTypeIs(assumed_input_type, NodeType::kNumber) &&
+        current_interpreter_frame_.get(reg)->value_representation() ==
+            ValueRepresentation::kHoleyFloat64) {
+      return NodeType::kNumberOrUndefined;
+    }
+    return assumed_input_type;
+  }
+
+  ReduceResult GetAccumulatorFloat64ForArithmetic(NodeType assumed_input_type) {
+    interpreter::Register reg = interpreter::Register::virtual_accumulator();
+    return GetFloat64ForToNumber(
+        reg, AllowUndefinedInputForArithmetic(reg, assumed_input_type));
+  }
 
   bool IsRegisterEqualToAccumulator(int operand_index) {
     interpreter::Register source = iterator_.GetRegisterOperand(operand_index);
@@ -743,9 +757,16 @@ class MaglevGraphBuilder {
   }
 
   ReduceResult LoadRegisterFloat64ForToNumber(int operand_index,
-                                              NodeType allowed_input_type) {
+                                              NodeType assumed_input_type) {
     return GetFloat64ForToNumber(iterator_.GetRegisterOperand(operand_index),
-                                 allowed_input_type);
+                                 assumed_input_type);
+  }
+
+  ReduceResult LoadRegisterFloat64ForArithmetic(int operand_index,
+                                                NodeType assumed_input_type) {
+    interpreter::Register reg = iterator_.GetRegisterOperand(operand_index);
+    return GetFloat64ForToNumber(
+        reg, AllowUndefinedInputForArithmetic(reg, assumed_input_type));
   }
 
   template <typename NodeT>
@@ -1071,11 +1092,22 @@ class MaglevGraphBuilder {
                                                  CallArguments& args,
                                                  ArgumentsElements* elements,
                                                  Args&&... extra_arg);
+  std::optional<base::SmallVector<ValueNode*, 8>>
+  TryExtractArgumentsFromElements(VirtualObject* arguments_object,
+                                  const CallArguments& args,
+                                  size_t num_args_to_copy);
   ReduceResult ReduceCallWithArrayLikeForArgumentsObject(
       ValueNode* target_node, CallArguments& args,
       VirtualObject* arguments_object,
       const compiler::FeedbackSource& feedback_source);
   ReduceResult ReduceCallWithArrayLike(
+      ValueNode* target_node, CallArguments& args,
+      const compiler::FeedbackSource& feedback_source);
+  MaybeReduceResult TryReduceCallWithSpreadForArgumentsObject(
+      ValueNode* target_node, CallArguments& args,
+      VirtualObject* arguments_object,
+      const compiler::FeedbackSource& feedback_source);
+  ReduceResult ReduceCallWithSpread(
       ValueNode* target_node, CallArguments& args,
       const compiler::FeedbackSource& feedback_source);
   ReduceResult ReduceCall(ValueNode* target_node, CallArguments& args,
@@ -1120,18 +1152,18 @@ class MaglevGraphBuilder {
       compiler::JSFunctionRef function,
       compiler::SharedFunctionInfoRef shared_function_info, ValueNode* target,
       ValueNode* new_target, CallArguments& args,
-      compiler::FeedbackSource& feedback_source);
+      const compiler::FeedbackSource& feedback_source);
   MaybeReduceResult TryReduceConstruct(
       compiler::HeapObjectRef target_constant, ValueNode* target,
       ValueNode* new_target, CallArguments& args,
-      compiler::FeedbackSource& feedback_source);
+      const compiler::FeedbackSource& feedback_source);
   MaybeReduceResult TryReduceConstructWithSpreadForArgumentsObject(
       ValueNode* target, ValueNode* new_target, CallArguments& args,
       VirtualObject* arguments_object,
       const compiler::FeedbackSource& feedback_source);
   ReduceResult BuildConstruct(ValueNode* target, ValueNode* new_target,
                               CallArguments& args,
-                              compiler::FeedbackSource& feedback_source);
+                              const compiler::FeedbackSource& feedback_source);
 
   MaybeReduceResult TryBuildScriptContextStore(
       const compiler::GlobalAccessFeedback& global_access_feedback);
@@ -1507,7 +1539,7 @@ class MaglevGraphBuilder {
       const DeoptFrame& frame,
       const MaglevGraphBuilder::LazyDeoptFrameScope* parent_scope);
 
-  std::optional<VirtualObject*> TryGetNonEscapingArgumentsObject(
+  std::optional<VirtualObject*> TryGetNonEscapingArgumentsOrArray(
       ValueNode* value);
 
   MaybeReduceResult TryBuildFastCreateObjectOrArrayLiteral(
@@ -1544,27 +1576,27 @@ class MaglevGraphBuilder {
   template <Operation kOperation>
   ReduceResult BuildInt32UnaryOperationNode();
   ReduceResult BuildTruncatingInt32BitwiseNotForToNumber(
-      NodeType allowed_input_type);
+      NodeType assumed_input_type);
   template <Operation kOperation>
   ReduceResult BuildInt32BinaryOperationNode();
   template <Operation kOperation>
   ReduceResult BuildInt32BinarySmiOperationNode();
   template <Operation kOperation>
   ReduceResult BuildTruncatingInt32BinaryOperationNodeForToNumber(
-      NodeType allowed_input_type);
+      NodeType assumed_input_type);
   template <Operation kOperation>
   ReduceResult BuildTruncatingInt32BinarySmiOperationNodeForToNumber(
-      NodeType allowed_input_type);
+      NodeType assumed_input_type);
 
   template <Operation kOperation>
   ReduceResult BuildFloat64UnaryOperationNodeForToNumber(
-      NodeType allowed_input_type);
+      NodeType assumed_input_type);
   template <Operation kOperation>
   ReduceResult BuildFloat64BinaryOperationNodeForToNumber(
-      NodeType allowed_input_type);
+      NodeType assumed_input_type);
   template <Operation kOperation>
   ReduceResult BuildFloat64BinarySmiOperationNodeForToNumber(
-      NodeType allowed_input_type);
+      NodeType assumed_input_type);
 
   ReduceResult BuildFloat64SpeculateSafeAdd(ValueNode* left, ValueNode* right);
 

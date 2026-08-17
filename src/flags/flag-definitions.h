@@ -350,7 +350,6 @@ DEFINE_BOOL(js_shipping, true, "enable all shipped JavaScript features")
 #define HARMONY_STAGED_BASE(V)
 
 #define JAVASCRIPT_STAGED_FEATURES_BASE(V)             \
-  V(js_iterator_join, "Iterator.prototype.join")       \
   V(js_immutable_arraybuffer, "Immutable ArrayBuffer") \
   V(js_import_text, "import text")                     \
   V(js_import_bytes, "import bytes")                   \
@@ -371,23 +370,24 @@ DEFINE_BOOL(js_shipping, true, "enable all shipped JavaScript features")
   V(harmony_temporal, "Temporal")
 
 #define JAVASCRIPT_SHIPPING_FEATURES_BASE(V)                                 \
-  V(js_regexp_duplicate_named_groups, "RegExp duplicate named groups")       \
-  V(js_regexp_modifiers, "RegExp modifiers")                                 \
-  V(js_promise_try, "Promise.try")                                           \
   V(js_atomics_pause, "Atomics.pause")                                       \
-  V(js_error_iserror, "Error.isError")                                       \
-  V(js_regexp_escape, "RegExp.escape")                                       \
-  V(js_explicit_resource_management, "explicit resource management")         \
-  V(js_float16array,                                                         \
-    "Float16Array, Math.f16round, DataView.getFloat16, DataView.setFloat16") \
   V(js_base_64, "Uint8Array to/from base64 and hex")                         \
+  V(js_error_iserror, "Error.isError")                                       \
   V(js_esm_ns_reexport,                                                      \
     "Support diamond-importing re-expored namespaces "                       \
     "(https://github.com/tc39/ecma262/pull/3715)")                           \
-  V(js_upsert, "upsert")                                                     \
+  V(js_explicit_resource_management, "explicit resource management")         \
+  V(js_float16array,                                                         \
+    "Float16Array, Math.f16round, DataView.getFloat16, DataView.setFloat16") \
+  V(js_iterator_join, "Iterator.prototype.join")                             \
   V(js_iterator_sequencing, "iterator sequencing")                           \
+  V(js_joint_iteration, "joint iteration")                                   \
+  V(js_promise_try, "Promise.try")                                           \
+  V(js_regexp_duplicate_named_groups, "RegExp duplicate named groups")       \
+  V(js_regexp_escape, "RegExp.escape")                                       \
+  V(js_regexp_modifiers, "RegExp modifiers")                                 \
   V(js_sum_precise, "Math.sumPrecise")                                       \
-  V(js_joint_iteration, "joint iteration")
+  V(js_upsert, "upsert")
 
 #ifdef V8_INTL_SUPPORT
 #define HARMONY_SHIPPING(V) HARMONY_SHIPPING_BASE(V)
@@ -2179,16 +2179,6 @@ FOREACH_WASM_SHIPPED_FEATURE_FLAG(DECL_WASM_FLAG)
 #undef DECL_WASM_FLAG
 #undef DECL_EXPERIMENTAL_WASM_FLAG
 
-// Note that it is a conscious decision not to use DEFINE_TEST_ONLY_FLAG as that
-// can't be used in combination with --fuzzing.
-// This flag allows to bypass casts which is unsafe. Note that this flag is
-// disabled in production and is disallowed for vulnerability reports. Creating
-// a crash with this flag enabled is neither a vulnerability, nor a stability
-// issue nor an issue at all.
-DEFINE_EXPERIMENTAL_FEATURE(
-    wasm_assume_ref_cast_desc_succeeds,
-    "assume ref.cast_desc always succeeds and skip the related type check")
-
 // Unsafe additions to the GC proposal for performance experiments.
 DEFINE_TEST_ONLY_FLAG(
     wasm_assume_ref_cast_succeeds,
@@ -3254,8 +3244,6 @@ DEFINE_BOOL(log_colour, ENABLE_LOG_COLOUR,
 // inspector
 DEFINE_BOOL(expose_inspector_scripts, false,
             "expose injected-script-source.js for debugging")
-DEFINE_BOOL(inspector_live_edit, false,
-            "deprecated and ignored (live edit is no longer supported)")
 
 // execution.cc
 //
@@ -4429,8 +4417,6 @@ DEFINE_NEG_IMPLICATION(disallow_unsafe_flags, redirect_code_traces)
 DEFINE_NEG_IMPLICATION(disallow_unsafe_flags, redirect_drumbrake_traces)
 #endif  // V8_ENABLE_DRUMBRAKE_TRACING
 DEFINE_NEG_IMPLICATION(disallow_unsafe_flags, wasm_assume_ref_cast_succeeds)
-DEFINE_NEG_IMPLICATION(disallow_unsafe_flags,
-                       wasm_assume_ref_cast_desc_succeeds)
 DEFINE_NEG_IMPLICATION(disallow_unsafe_flags, wasm_skip_null_checks)
 DEFINE_NEG_IMPLICATION(disallow_unsafe_flags, wasm_ref_cast_nop)
 DEFINE_NEG_IMPLICATION(disallow_unsafe_flags, wasm_skip_bounds_checks)
