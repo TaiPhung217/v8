@@ -146,7 +146,7 @@ vars = {
   # Three lines of non-changing comments so that
   # the commit queue can handle CLs rolling agents-public
   # and whatever else without interference from each other.
-  'agents_public_revision': 'e64987d3ea47f5f5d00c66de617aec591d1c0bcf',
+  'agents_public_revision': '73470db4a7810560ec92e8aa27ff3c6a8a36bea5',
 }
 
 deps = {
@@ -215,7 +215,7 @@ deps = {
   'test/mozilla/data':
     Var('chromium_url') + '/v8/deps/third_party/mozilla-tests.git' + '@' + 'f6c578a10ea707b1a8ab0b88943fe5115ce2b9be',
   'test/test262/data':
-    Var('chromium_url') + '/external/github.com/tc39/test262.git' + '@' + 'be13516fb6441b950ba8a3df97eb34062c186972',
+    Var('chromium_url') + '/external/github.com/tc39/test262.git' + '@' + '3655e7464de3d52643ecddd4b5f9f4f3e7f62398',
   'third_party/android_platform': {
     'url': Var('chromium_url') + '/chromium/src/third_party/android_platform.git' + '@' + 'e3919359f2387399042d31401817db4a02d756ec',
     'condition': 'checkout_android',
@@ -307,9 +307,9 @@ deps = {
     'url': Var('chromium_url') + '/external/github.com/google/benchmark.git' + '@' + '8abf1e701fbd88c8170f48fe0558247e2e5f8e7d',
   },
   'third_party/fuzztest':
-    Var('chromium_url') + '/chromium/src/third_party/fuzztest.git' + '@' + '09729a2a508320d12638bf0e18a40ad05bfb4740',
+    Var('chromium_url') + '/chromium/src/third_party/fuzztest.git' + '@' + '280c92c03c62e61ab3b6027069e0b5f48905460d',
   'third_party/fuzztest/src':
-    Var('chromium_url') + '/external/github.com/google/fuzztest.git' + '@' + '810d993fa2c8fe02650d8e2388246a5b67341022',
+    Var('chromium_url') + '/external/github.com/google/fuzztest.git' + '@' + '8bc765afc32fa8210cfe827ff4c94ab7db1c518b',
   'third_party/googletest/src':
     Var('chromium_url') + '/external/github.com/google/googletest.git' + '@' + '4fe3307fb2d9f86d19777c7eb0e4809e9694dde7',
   'third_party/highway/src':

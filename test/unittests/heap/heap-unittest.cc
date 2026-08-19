@@ -24,6 +24,9 @@
 #include "include/v8-object.h"
 #include "src/base/bounded-page-allocator.h"
 #include "src/codegen/assembler-inl.h"
+#include "src/codegen/compilation-cache.h"
+#include "src/codegen/compiler.h"
+#include "src/codegen/script-details.h"
 #include "src/common/globals.h"
 #include "src/flags/flags.h"
 #include "src/handles/handles-inl.h"
@@ -1553,6 +1556,458 @@ TEST_F(HeapTest, BytecodeArray) {
   // Constant pool should have been migrated.
   EXPECT_EQ(array->constant_pool().ptr(), constant_pool->ptr());
   EXPECT_NE(array->constant_pool().ptr(), old_constant_pool_address.ptr());
+}
+
+TEST_F(HeapTest, BytecodeFlushing) {
+#if !defined(V8_LITE_MODE) && defined(V8_ENABLE_TURBOFAN)
+  v8_flags.turbofan = false;
+  i::v8_flags.optimize_for_size = false;
+#endif  // !defined(V8_LITE_MODE) && defined(V8_ENABLE_TURBOFAN)
+#ifdef V8_ENABLE_SPARKPLUG
+  v8_flags.always_sparkplug = false;
+#endif  // V8_ENABLE_SPARKPLUG
+  i::v8_flags.flush_bytecode = true;
+  i::v8_flags.allow_natives_syntax = true;
+
+  ManualGCScope manual_gc_scope(i_isolate());
+  v8::HandleScope scope(v8_isolate());
+  const char* source =
+      "function foo() {"
+      "  var x = 42;"
+      "  var y = 42;"
+      "  var z = x + y;"
+      "};"
+      "foo()";
+  DirectHandle<String> foo_name = factory()->InternalizeUtf8String("foo");
+
+  // This compile will add the code to the compilation cache.
+  {
+    v8::HandleScope new_scope(v8_isolate());
+    RunJS(source);
+  }
+
+  // Check function is compiled.
+  DirectHandle<Object> func_value =
+      Object::GetProperty(i_isolate(), i_isolate()->global_object(), foo_name)
+          .ToHandleChecked();
+  EXPECT_TRUE(IsJSFunction(*func_value));
+  DirectHandle<JSFunction> function = Cast<JSFunction>(func_value);
+  EXPECT_TRUE(function->shared()->is_compiled());
+
+  // The code will survive at least two GCs.
+  {
+    DisableConservativeStackScanningScopeForTesting no_stack_scanning(heap());
+    InvokeMajorGC();
+    InvokeMajorGC();
+  }
+  EXPECT_TRUE(function->shared()->is_compiled());
+
+  i::SharedFunctionInfo::EnsureOldForTesting(function->shared());
+  {
+    DisableConservativeStackScanningScopeForTesting no_stack_scanning(heap());
+    InvokeMajorGC();
+  }
+
+  // foo should no longer be compiled
+  EXPECT_FALSE(function->shared()->is_compiled());
+  EXPECT_FALSE(function->is_compiled(i_isolate()));
+  // Call foo to get it recompiled.
+  RunJS("foo()");
+  EXPECT_TRUE(function->shared()->is_compiled());
+  EXPECT_TRUE(function->is_compiled(i_isolate()));
+}
+
+namespace {
+void RunMultiReferencedBytecodeFlushingTest(HeapTest* test,
+                                            bool sparkplug_compile) {
+#if !defined(V8_LITE_MODE) && defined(V8_ENABLE_TURBOFAN)
+  v8_flags.turbofan = false;
+  i::v8_flags.optimize_for_size = false;
+#endif  // !defined(V8_LITE_MODE) && defined(V8_ENABLE_TURBOFAN)
+#ifdef V8_ENABLE_SPARKPLUG
+  v8_flags.always_sparkplug = false;
+  v8_flags.flush_baseline_code = true;
+#else
+  if (sparkplug_compile) return;
+#endif  // V8_ENABLE_SPARKPLUG
+  i::v8_flags.flush_bytecode = true;
+  i::v8_flags.allow_natives_syntax = true;
+
+  ManualGCScope manual_gc_scope(test->i_isolate());
+  v8::HandleScope scope(test->v8_isolate());
+  const char* source =
+      "function foo() {"
+      "  var x = 42;"
+      "  var y = 42;"
+      "  var z = x + y;"
+      "};"
+      "foo()";
+  DirectHandle<String> foo_name = test->factory()->InternalizeUtf8String("foo");
+
+  // This compile will add the code to the compilation cache.
+  {
+    v8::HandleScope new_scope(test->v8_isolate());
+    test->RunJS(source);
+  }
+
+  // Check function is compiled.
+  DirectHandle<Object> func_value =
+      Object::GetProperty(test->i_isolate(), test->i_isolate()->global_object(),
+                          foo_name)
+          .ToHandleChecked();
+  EXPECT_TRUE(IsJSFunction(*func_value));
+  DirectHandle<JSFunction> function = Cast<JSFunction>(func_value);
+  DirectHandle<SharedFunctionInfo> shared(function->shared(),
+                                          test->i_isolate());
+  EXPECT_TRUE(shared->is_compiled());
+
+  // Make a copy of the SharedFunctionInfo which points to the same bytecode.
+  Handle<SharedFunctionInfo> copy =
+      test->factory()->CloneSharedFunctionInfo(shared);
+
+  if (sparkplug_compile) {
+    v8::HandleScope baseline_compilation_scope(test->v8_isolate());
+    IsCompiledScope is_compiled_scope =
+        copy->is_compiled_scope(test->i_isolate());
+    Compiler::CompileSharedWithBaseline(
+        test->i_isolate(), copy, Compiler::CLEAR_EXCEPTION, &is_compiled_scope);
+  }
+
+  i::SharedFunctionInfo::EnsureOldForTesting(*shared);
+  {
+    // We need to invoke GC without stack, otherwise some objects may not be
+    // reclaimed because of conservative stack scanning.
+    DisableConservativeStackScanningScopeForTesting no_stack_scanning(
+        test->heap());
+    test->InvokeMajorGC();
+  }
+
+  // shared SFI is marked old but BytecodeArray is kept alive by copy.
+  EXPECT_TRUE(shared->is_compiled());
+  EXPECT_TRUE(copy->is_compiled());
+  EXPECT_TRUE(function->is_compiled(test->i_isolate()));
+
+  // The feedback metadata for both SharedFunctionInfo instances should have
+  // been reset.
+  EXPECT_TRUE(shared->HasFeedbackMetadata());
+  EXPECT_TRUE(copy->HasFeedbackMetadata());
+}
+}  // namespace
+
+TEST_F(HeapTest, MultiReferencedBytecodeFlushing) {
+  RunMultiReferencedBytecodeFlushingTest(this, /*sparkplug_compile=*/false);
+}
+
+TEST_F(HeapTest, MultiReferencedBytecodeFlushingWithSparkplug) {
+  RunMultiReferencedBytecodeFlushingTest(this, /*sparkplug_compile=*/true);
+}
+
+TEST_F(HeapTest, JSInterceptorMap) {
+  DirectHandle<InterceptorInfo> named_interceptor =
+      factory()->NewInterceptorInfo(InterceptorKind::kNamed);
+  DirectHandle<InterceptorInfo> indexed_interceptor =
+      factory()->NewInterceptorInfo(InterceptorKind::kIndexed);
+
+  DirectHandle<Map> last_map;
+  {
+    HandleScope sc1(isolate());
+
+    const size_t N = 100;
+    DirectHandleVector<JSObject> objects(isolate());
+    objects.reserve(N);
+    DirectHandle<JSInterceptorMap> map;
+
+    for (size_t i = 0; i < N; i++) {
+      if (i % 10 == 0) {
+        // Create a fresh map every now and then.
+        const int inobject_properties = 2;
+        map = Cast<JSInterceptorMap>(factory()->NewExtendedMapWithMetaMap(
+            isolate()->meta_map(), ExtendedMapKind::kJSInterceptorMap,
+            JS_OBJECT_TYPE,
+            JSObject::kHeaderSize + inobject_properties * kTaggedSize,
+            TERMINAL_FAST_ELEMENTS_KIND, inobject_properties));
+        map->init_flags_and_clear_extended_padding();
+        map->set_named_interceptor(*named_interceptor);
+        map->set_indexed_interceptor(*indexed_interceptor);
+        map->set_fast_case_validity_cell(
+            ReadOnlyRoots(isolate()).invalid_prototype_validity_cell());
+      }
+
+      Handle<JSObject> obj = factory()->NewJSObjectFromMap(map);
+      Object::SetProperty(isolate(), obj, factory()->a_string(), obj).Check();
+      Object::SetProperty(isolate(), obj, factory()->b_string(), obj).Check();
+      Object::SetProperty(isolate(), obj, factory()->c_string(), obj).Check();
+      Object::SetProperty(isolate(), obj, factory()->d_string(), obj).Check();
+
+#ifdef VERIFY_HEAP
+      obj->HeapObjectVerify(isolate());
+      obj->map()->HeapObjectVerify(isolate());
+#endif  // VERIFY_HEAP
+      objects.emplace_back(obj);
+      if (i == N / 2) {
+        InvokeMajorGC();
+        InvokeMajorGC();
+      }
+    }
+
+    InvokeMajorGC();
+    InvokeMajorGC();
+    last_map = sc1.CloseAndEscape(map);
+  }
+  InvokeMajorGC();
+  InvokeMajorGC();
+
+  EXPECT_TRUE(IsJSObjectMap(*last_map));
+  EXPECT_TRUE(last_map->is_extended_map());
+
+  EXPECT_EQ(UncheckedCast<ExtendedMap>(last_map)->map_kind(),
+            ExtendedMapKind::kJSInterceptorMap);
+  DirectHandle<JSInterceptorMap> map = Cast<JSInterceptorMap>(last_map);
+  EXPECT_EQ(map->named_interceptor(), *named_interceptor);
+  EXPECT_EQ(map->indexed_interceptor(), *indexed_interceptor);
+}
+
+namespace {
+void RunCompilationCacheCachingBehaviorTest(HeapTest* test,
+                                            bool retain_script) {
+  // If we do not have the compilation cache turned off, this test is invalid.
+  if (!v8_flags.compilation_cache) {
+    return;
+  }
+  if (!v8_flags.flush_bytecode ||
+      (v8_flags.always_sparkplug && !v8_flags.flush_baseline_code)) {
+    return;
+  }
+  Isolate* isolate = test->i_isolate();
+  Factory* factory = test->factory();
+  CompilationCache* compilation_cache = isolate->compilation_cache();
+  LanguageMode language_mode = LanguageMode::kSloppy;
+
+  v8::HandleScope outer_scope(test->v8_isolate());
+  const char* raw_source = retain_script ? "function foo() {"
+                                           "  var x = 42;"
+                                           "  var y = 42;"
+                                           "  var z = x + y;"
+                                           "};"
+                                           "foo();"
+                                         : "(function foo() {"
+                                           "  var x = 42;"
+                                           "  var y = 42;"
+                                           "  var z = x + y;"
+                                           "})();";
+  Handle<String> source =
+      Cast<String>(factory->InternalizeUtf8String(raw_source));
+
+  {
+    v8::HandleScope scope(test->v8_isolate());
+    test->RunJS(raw_source);
+  }
+
+  // The script should be in the cache now.
+  {
+    v8::HandleScope scope(test->v8_isolate());
+    ScriptDetails script_details(Handle<Object>(),
+                                 v8::ScriptOriginOptions(true, false));
+    auto lookup_result =
+        compilation_cache->LookupScript(source, script_details, language_mode);
+    EXPECT_FALSE(lookup_result.toplevel_sfi().is_null());
+  }
+
+  // Check that the code cache entry survives at least one GC.
+  {
+    // In this test, we need to invoke GC without stack, otherwise some objects
+    // may not be reclaimed because of conservative stack scanning.
+    DisableConservativeStackScanningScopeForTesting no_stack_scanning(
+        test->heap());
+    test->InvokeMajorGC();
+  }
+  {
+    v8::HandleScope scope(test->v8_isolate());
+    ScriptDetails script_details(Handle<Object>(),
+                                 v8::ScriptOriginOptions(true, false));
+    auto lookup_result =
+        compilation_cache->LookupScript(source, script_details, language_mode);
+    EXPECT_FALSE(lookup_result.toplevel_sfi().is_null());
+
+    // Progress code age until it's old and ready for GC.
+    DirectHandle<SharedFunctionInfo> shared =
+        lookup_result.toplevel_sfi().ToHandleChecked();
+    EXPECT_TRUE(shared->HasBytecodeArray());
+    SharedFunctionInfo::EnsureOldForTesting(*shared);
+  }
+
+  {
+    DisableConservativeStackScanningScopeForTesting no_stack_scanning(
+        test->heap());
+    // The first GC flushes the BytecodeArray from the SFI.
+    test->InvokeMajorGC();
+    // The second GC removes the SFI from the compilation cache.
+    test->InvokeMajorGC();
+  }
+
+  {
+    v8::HandleScope scope(test->v8_isolate());
+    // Ensure code aging cleared the entry from the cache.
+    ScriptDetails script_details(Handle<Object>(),
+                                 v8::ScriptOriginOptions(true, false));
+    auto lookup_result =
+        compilation_cache->LookupScript(source, script_details, language_mode);
+    EXPECT_TRUE(lookup_result.toplevel_sfi().is_null());
+    EXPECT_EQ(retain_script, !lookup_result.script().is_null());
+  }
+}
+}  // namespace
+
+TEST_F(HeapTest, CompilationCacheCachingBehaviorDiscardScript) {
+  RunCompilationCacheCachingBehaviorTest(this, false);
+}
+
+TEST_F(HeapTest, CompilationCacheCachingBehaviorRetainScript) {
+  RunCompilationCacheCachingBehaviorTest(this, true);
+}
+
+#if !defined(V8_LITE_MODE) && defined(V8_ENABLE_TURBOFAN)
+TEST_F(HeapTest, OptimizeAfterBytecodeFlushingCandidate) {
+  if (v8_flags.single_generation) return;
+  v8_flags.turbofan = true;
+#ifdef V8_ENABLE_SPARKPLUG
+  v8_flags.always_sparkplug = false;
+#endif  // V8_ENABLE_SPARKPLUG
+  i::v8_flags.optimize_for_size = false;
+  i::v8_flags.incremental_marking = true;
+  i::v8_flags.flush_bytecode = true;
+  i::v8_flags.allow_natives_syntax = true;
+  ManualGCScope manual_gc_scope(i_isolate());
+
+  v8::HandleScope outer_scope(v8_isolate());
+  const char* source =
+      "function foo() {"
+      "  var x = 42;"
+      "  var y = 42;"
+      "  var z = x + y;"
+      "};"
+      "foo()";
+  DirectHandle<String> foo_name = factory()->InternalizeUtf8String("foo");
+
+  // This compile will add the code to the compilation cache.
+  {
+    v8::HandleScope scope(v8_isolate());
+    RunJS(source);
+  }
+
+  // Check function is compiled.
+  DirectHandle<Object> func_value =
+      Object::GetProperty(i_isolate(), i_isolate()->global_object(), foo_name)
+          .ToHandleChecked();
+  EXPECT_TRUE(IsJSFunction(*func_value));
+  DirectHandle<JSFunction> function = Cast<JSFunction>(func_value);
+  EXPECT_TRUE(function->shared()->is_compiled());
+
+  // The code will survive at least two GCs.
+  {
+    // In this test, we need to invoke GC without stack, otherwise some objects
+    // may not be reclaimed because of conservative stack scanning.
+    DisableConservativeStackScanningScopeForTesting no_stack_scanning(heap());
+    InvokeMajorGC();
+    InvokeMajorGC();
+  }
+  EXPECT_TRUE(function->shared()->is_compiled());
+
+  i::SharedFunctionInfo::EnsureOldForTesting(function->shared());
+  {
+    DisableConservativeStackScanningScopeForTesting no_stack_scanning(heap());
+    InvokeMajorGC();
+  }
+
+  EXPECT_FALSE(function->shared()->is_compiled());
+  EXPECT_FALSE(function->is_compiled(i_isolate()));
+
+  // This compile will compile the function again.
+  {
+    v8::HandleScope scope(v8_isolate());
+    RunJS("foo();");
+  }
+
+  SharedFunctionInfo::EnsureOldForTesting(function->shared());
+  SimulateIncrementalMarking();
+
+  // Force optimization while incremental marking is active and while
+  // the function is enqueued as a candidate.
+  {
+    v8::HandleScope scope(v8_isolate());
+    RunJS(
+        "%PrepareFunctionForOptimization(foo); foo();"
+        "%OptimizeFunctionOnNextCall(foo); foo();");
+  }
+
+  // Simulate one final GC and make sure the candidate wasn't flushed.
+  {
+    DisableConservativeStackScanningScopeForTesting no_stack_scanning(heap());
+    InvokeMajorGC();
+  }
+  EXPECT_TRUE(function->shared()->is_compiled());
+  EXPECT_TRUE(function->is_compiled(i_isolate()));
+}
+#endif  // !defined(V8_LITE_MODE) && defined(V8_ENABLE_TURBOFAN)
+
+TEST_F(HeapTest, MultiReferencedBytecodeFlushingBothOld) {
+#if !defined(V8_LITE_MODE) && defined(V8_ENABLE_TURBOFAN)
+  v8_flags.turbofan = false;
+  i::v8_flags.optimize_for_size = false;
+#endif  // !defined(V8_LITE_MODE) && defined(V8_ENABLE_TURBOFAN)
+#ifdef V8_ENABLE_SPARKPLUG
+  v8_flags.always_sparkplug = false;
+  v8_flags.flush_baseline_code = true;
+#endif  // V8_ENABLE_SPARKPLUG
+  i::v8_flags.flush_bytecode = true;
+  i::v8_flags.allow_natives_syntax = true;
+
+  ManualGCScope manual_gc_scope(i_isolate());
+  v8::HandleScope scope(v8_isolate());
+  const char* source =
+      "function foo() {"
+      "  var x = 42;"
+      "  var y = 42;"
+      "  var z = x + y;"
+      "};"
+      "foo()";
+  DirectHandle<String> foo_name = factory()->InternalizeUtf8String("foo");
+
+  // This compile will add the code to the compilation cache.
+  {
+    v8::HandleScope new_scope(v8_isolate());
+    RunJS(source);
+  }
+
+  // Check function is compiled.
+  DirectHandle<Object> func_value =
+      Object::GetProperty(i_isolate(), i_isolate()->global_object(), foo_name)
+          .ToHandleChecked();
+  EXPECT_TRUE(IsJSFunction(*func_value));
+  DirectHandle<JSFunction> function = Cast<JSFunction>(func_value);
+  DirectHandle<SharedFunctionInfo> shared(function->shared(), i_isolate());
+  EXPECT_TRUE(shared->is_compiled());
+
+  // Make a copy of the SharedFunctionInfo which points to the same bytecode.
+  Handle<SharedFunctionInfo> copy = factory()->CloneSharedFunctionInfo(shared);
+
+  // Verify that both SFIs share the same BytecodeArray.
+  EXPECT_EQ(shared->GetBytecodeArray(i_isolate()),
+            copy->GetBytecodeArray(i_isolate()));
+
+  i::SharedFunctionInfo::EnsureOldForTesting(*shared);
+  i::SharedFunctionInfo::EnsureOldForTesting(*copy);
+
+  {
+    // We need to invoke GC without stack, otherwise some objects may not be
+    // reclaimed because of conservative stack scanning.
+    DisableConservativeStackScanningScopeForTesting no_stack_scanning(heap());
+    InvokeMajorGC();
+  }
+
+  // Both should be decompiled (flushed) because both were old.
+  EXPECT_FALSE(shared->is_compiled());
+  EXPECT_FALSE(copy->is_compiled());
 }
 
 }  // namespace internal

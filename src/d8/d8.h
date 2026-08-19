@@ -5,6 +5,7 @@
 #ifndef V8_D8_D8_H_
 #define V8_D8_D8_H_
 
+#include <atomic>
 #include <iterator>
 #include <map>
 #include <memory>
@@ -168,6 +169,7 @@ class SourceGroup {
   i::ParkingSemaphore next_semaphore_;
   i::ParkingSemaphore done_semaphore_;
   base::Thread* thread_;
+  std::atomic<bool> terminate_{false};
 
   void ExitShell(int exit_code);
 
@@ -1002,12 +1004,12 @@ class Shell : public i::AllStatic {
                                             const std::string& file_name,
                                             ModuleType module_type);
 
-  static MaybeLocal<Value> JSONModuleEvaluationSteps(Local<Context> context,
-                                                     Local<Module> module);
-  static MaybeLocal<Value> TextModuleEvaluationSteps(Local<Context> context,
-                                                     Local<Module> module);
-  static MaybeLocal<Value> BytesModuleEvaluationSteps(Local<Context> context,
-                                                      Local<Module> module);
+  static MaybeLocal<Promise> JSONModuleEvaluationSteps(Local<Context> context,
+                                                       Local<Module> module);
+  static MaybeLocal<Promise> TextModuleEvaluationSteps(Local<Context> context,
+                                                       Local<Module> module);
+  static MaybeLocal<Promise> BytesModuleEvaluationSteps(Local<Context> context,
+                                                        Local<Module> module);
 
   template <class T>
   static MaybeLocal<T> CompileSource(Isolate* isolate, Local<Context> context,

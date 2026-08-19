@@ -382,6 +382,9 @@ DEFINE_BOOL(js_shipping, true, "enable all shipped JavaScript features")
   V(js_iterator_join, "Iterator.prototype.join")                             \
   V(js_iterator_sequencing, "iterator sequencing")                           \
   V(js_joint_iteration, "joint iteration")                                   \
+  V(js_pr_3883,                                                              \
+    "Let Promise.try not wrap the result in an extra promise in the "        \
+    "non-throwing case (https://github.com/tc39/ecma262/pull/3883)")         \
   V(js_promise_try, "Promise.try")                                           \
   V(js_regexp_duplicate_named_groups, "RegExp duplicate named groups")       \
   V(js_regexp_escape, "RegExp.escape")                                       \
@@ -1389,6 +1392,8 @@ DEFINE_NEG_IMPLICATION(shared_heap, always_use_string_forwarding_table)
 
 DEFINE_BOOL(transition_strings_during_gc_with_stack, false,
             "Transition strings during a full GC with stack")
+DEFINE_NEG_IMPLICATION(shared_string_table,
+                       transition_strings_during_gc_with_stack)
 
 DEFINE_SIZE_T(initial_shared_heap_size, 0,
               "initial size of the shared heap (in Mbytes); "
@@ -3112,6 +3117,7 @@ DEFINE_BOOL(test_small_max_function_context_stub_size, false,
             "by making the maximum size smaller")
 DEFINE_WEAK_IMPLICATION(future, fast_api_indexof)
 DEFINE_BOOL(fast_api_indexof, false, "enable using indexOf Api callbacks")
+DEFINE_WEAK_IMPLICATION(future, fast_api_iterable_to_list)
 DEFINE_BOOL(fast_api_iterable_to_list, false,
             "enable fast path for IterableToList for indexed interceptors")
 
@@ -3323,9 +3329,6 @@ DEFINE_WEAK_IMPLICATION(future, clone_object_sidestep_transitions)
 DEFINE_INT(fast_properties_soft_limit, 12,
            "limits the number of properties that can be added to an object "
            "using keyed store before transitioning to dictionary mode")
-DEFINE_INT(max_fast_properties, 128,
-           "limits the number of mutable properties that can be added to an "
-           "object before transitioning to dictionary mode")
 
 DEFINE_BOOL(native_code_counters, DEBUG_BOOL,
             "generate extra code for manipulating stats counters")
