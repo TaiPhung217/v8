@@ -3702,6 +3702,7 @@ v8_header_set("v8_flags") {
   configs = [ ":internal_config" ]
 
   sources = [
+    "src/flags/feature-flags.h",
     "src/flags/flag-definitions.h",
     "src/flags/flags-impl.h",
     "src/flags/flags.h",
@@ -4086,6 +4087,7 @@ v8_header_set("v8_internal_headers") {
     "src/debug/debug-frames.h",
     "src/debug/debug-interface.h",
     "src/debug/debug-property-iterator.h",
+    "src/debug/debug-scope-info.h",
     "src/debug/debug-scope-iterator.h",
     "src/debug/debug-scopes.h",
     "src/debug/debug-stack-trace-iterator.h",
@@ -4998,7 +5000,6 @@ v8_header_set("v8_internal_headers") {
       "src/wasm/wasm-engine.h",
       "src/wasm/wasm-export-wrapper-cache.h",
       "src/wasm/wasm-external-refs.h",
-      "src/wasm/wasm-feature-flags.h",
       "src/wasm/wasm-features.h",
       "src/wasm/wasm-import-wrapper-cache.h",
       "src/wasm/wasm-init-expr.h",
@@ -6043,6 +6044,7 @@ v8_cluster_source_set("v8_base_without_compiler") {
     "src/debug/debug-frames.cc",
     "src/debug/debug-interface.cc",
     "src/debug/debug-property-iterator.cc",
+    "src/debug/debug-scope-info.cc",
     "src/debug/debug-scope-iterator.cc",
     "src/debug/debug-scopes.cc",
     "src/debug/debug-stack-trace-iterator.cc",
@@ -6379,6 +6381,7 @@ v8_cluster_source_set("v8_base_without_compiler") {
     "src/sandbox/js-dispatch-table.cc",
     "src/sandbox/sandbox.cc",
     "src/sandbox/sandboxable-thread.cc",
+    "src/sandbox/segmented-table.cc",
     "src/sandbox/testing.cc",
     "src/sandbox/trap-fuzzer.cc",
     "src/sandbox/trusted-pointer-scope.cc",
