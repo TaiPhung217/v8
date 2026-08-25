@@ -779,7 +779,7 @@ inline void MaglevAssembler::AddInt32(Register dst, Register src, int amount) {
 }
 
 inline void MaglevAssembler::AndInt32(Register dst, Register src, int mask) {
-  Add32(dst, src, Operand(mask));
+  And(dst, src, Operand(mask));
 }
 
 inline void MaglevAssembler::AndInt32(Register reg, int mask) {
@@ -957,8 +957,8 @@ inline void MaglevAssembler::LoadUnalignedFloat64AndReverseByteOrder(
     DoubleRegister dst, Register base, Register index) {
   MaglevAssembler::TemporaryRegisterScope temps(this);
   Register address = temps.AcquireScratch();
+  Register scratch = temps.AcquireScratch();
   Add64(address, base, index);
-  Register scratch = base;  // reuse base as scratch register
   LoadWord(scratch, MemOperand(address));
   ByteSwap(scratch, scratch, 8, address);
   MacroAssembler::Move(dst, scratch);
@@ -1692,8 +1692,6 @@ inline void MaglevAssembler::CompareIntPtrAndBranch(
       UNREACHABLE();  // not expected
   }
 
-  MaglevAssembler::TemporaryRegisterScope temps(this);
-  Register lhs = temps.AcquireScratch();
   if (fallthrough_when_false) {
     if (fallthrough_when_true) {
       // If both paths are a fallthrough, do nothing.
@@ -1701,10 +1699,10 @@ inline void MaglevAssembler::CompareIntPtrAndBranch(
       return;
     }
     // Jump over the false block if true, otherwise fall through into it.
-    MacroAssembler::Branch(if_true, cond, lhs, Operand(value), true_distance);
+    MacroAssembler::Branch(if_true, cond, r1, Operand(value), true_distance);
   } else {
     // Jump to the false block if true.
-    MacroAssembler::Branch(if_false, NegateCondition(cond), lhs, Operand(value),
+    MacroAssembler::Branch(if_false, NegateCondition(cond), r1, Operand(value),
                            false_distance);
     // Jump to the true block if it's not the next block.
     if (!fallthrough_when_true) {
