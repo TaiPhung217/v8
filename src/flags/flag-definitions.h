@@ -342,6 +342,9 @@ DEFINE_EXPERIMENTAL_FEATURE(
 DEFINE_BOOL(icu_timezone_data, true, "get information about timezones from ICU")
 DEFINE_STRING(icu_datetime_compat_lang, "*",
               "limits ICU date time compat changes to the given language")
+DEFINE_BOOL(
+    intl_date_time_pattern_generator_cache_eviction, false,
+    "enable 8-entry cache eviction in DateTimePatternGeneratorCache")
 #endif
 
 #ifdef V8_ENABLE_DOUBLE_CONST_STORE_CHECK
@@ -3275,7 +3278,7 @@ DEFINE_GENERIC_IMPLICATION(
                 v8::tracing::TracingCategoryObserver::ENABLED_BY_NATIVE))
 DEFINE_BOOL_READONLY(fast_map_update, false,
                      "enable fast map update by caching the migration target")
-#define DEFAULT_MAX_POLYMORPHIC_MAP_COUNT 4
+#define DEFAULT_MAX_POLYMORPHIC_MAP_COUNT 10
 DEFINE_INT(max_valid_polymorphic_map_count, DEFAULT_MAX_POLYMORPHIC_MAP_COUNT,
            "maximum number of valid maps to track in POLYMORPHIC state")
 DEFINE_BOOL(

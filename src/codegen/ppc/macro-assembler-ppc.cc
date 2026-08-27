@@ -1625,8 +1625,10 @@ void MacroAssembler::PushStackHandler() {
 
   // Link the current handler as the next handler.
   // Preserve r4-r8.
-  LoadU64(r0, AsMemOperand(IsolateFieldId::kHandler));
-  push(r0);
+  UseScratchRegisterScope temps(this);
+  Register scratch = temps.Acquire();
+  LoadU64(scratch, AsMemOperand(IsolateFieldId::kHandler));
+  push(scratch);
 
   // Set this new handler as the current one.
   StoreU64(sp, AsMemOperand(IsolateFieldId::kHandler));
@@ -1687,8 +1689,10 @@ void MacroAssembler::CompareTaggedRoot(const Register& obj, RootIndex index) {
   // Some smi roots contain system pointer size values like stack limits.
   DCHECK(base::IsInRange(index, RootIndex::kFirstStrongOrReadOnlyRoot,
                          RootIndex::kLastStrongOrReadOnlyRoot));
-  LoadRoot(r0, index);
-  CompareTagged(obj, r0);
+  UseScratchRegisterScope temps(this);
+  Register scratch = temps.Acquire();
+  LoadRoot(scratch, index);
+  CompareTagged(obj, scratch);
 }
 
 void MacroAssembler::CompareRoot(Register obj, RootIndex index) {
