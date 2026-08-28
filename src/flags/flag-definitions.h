@@ -344,7 +344,7 @@ DEFINE_STRING(icu_datetime_compat_lang, "*",
               "limits ICU date time compat changes to the given language")
 DEFINE_BOOL(
     intl_date_time_pattern_generator_cache_eviction, false,
-    "enable 8-entry cache eviction in DateTimePatternGeneratorCache")
+    "enable 9-entry cache eviction in DateTimePatternGeneratorCache")
 #endif
 
 #ifdef V8_ENABLE_DOUBLE_CONST_STORE_CHECK
@@ -3299,6 +3299,9 @@ DEFINE_BOOL(native_code_counters, DEBUG_BOOL,
 // feature-flags.h instead of here to follow the regular launch process format.
 DEFINE_BOOL_READONLY(sparkplug_plus, false,
                      "enable dynamic patching on JS baseline code")
+DEFINE_BOOL_READONLY(sparkplug_inline_smi, false,
+                     "inline the Smi fast path of embedded feedback "
+                     "operations into baseline code")
 #endif
 DEFINE_IMPLICATION(sparkplug_plus, short_builtin_calls)
 
