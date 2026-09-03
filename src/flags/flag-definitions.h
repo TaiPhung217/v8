@@ -1320,6 +1320,8 @@ DEFINE_INT(stress_runs, 0, "number of stress runs")
 DEFINE_INT(deopt_every_n_times, 0,
            "deoptimize every n times a deopt point is passed")
 DEFINE_BOOL(print_deopt_stress, false, "print number of possible deopt points")
+DEFINE_BOOL(disable_loop_stack_checks, false,
+            "disable loop stack checks (for testing/fuzzing only)")
 
 // Flags for TurboFan.
 #ifdef V8_ENABLE_TURBOFAN
@@ -2076,8 +2078,9 @@ DEFINE_DEBUG_BOOL(
     "enables a testing opcode in wasm that is only implemented in TurboFan")
 DEFINE_NEG_IMPLICATION(liftoff_only, enable_testing_opcode_in_wasm)
 // Do synchronous tier up (instead of in-background tierup) in single threaded
-// mode.
+// and predictable mode.
 DEFINE_IMPLICATION(single_threaded, wasm_sync_tier_up)
+DEFINE_IMPLICATION(predictable, wasm_sync_tier_up)
 DEFINE_DEBUG_BOOL(trace_liftoff, false,
                   "trace Liftoff, the baseline compiler for WebAssembly")
 DEFINE_DEVELOPER_FLAG(trace_wasm_memory,
@@ -2709,6 +2712,7 @@ DEFINE_BOOL(memory_reducer_for_small_heaps, true,
             "use memory reducer for small heaps")
 DEFINE_INT(memory_reducer_gc_count, 2,
            "Maximum number of memory reducer GCs scheduled")
+DEFINE_REQUIREMENT(v8_flags.memory_reducer_gc_count > 0)
 DEFINE_INT(memory_reducer_delay_ms, 8'000, "Delay before memory reducer start")
 DEFINE_REQUIREMENT(v8_flags.memory_reducer_delay_ms > 0)
 DEFINE_INT(gc_memory_reducer_start_delay_ms, 30'000,
@@ -4221,7 +4225,9 @@ DEFINE_NEG_IMPLICATION(predictable, parallel_compile_tasks_for_lazy)
 #ifdef V8_ENABLE_MAGLEV
 DEFINE_NEG_IMPLICATION(predictable, maglev_deopt_data_on_background)
 DEFINE_NEG_IMPLICATION(predictable, maglev_build_code_on_background)
+DEFINE_NEG_IMPLICATION(predictable, maglev_destroy_on_background)
 #endif  // V8_ENABLE_MAGLEV
+DEFINE_NEG_IMPLICATION(predictable, concurrent_cache_deserialization)
 // Avoid random seeds in predictable mode.
 DEFINE_VALUE_IMPLICATION(predictable && random_seed == 0, random_seed, 12347)
 

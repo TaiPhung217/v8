@@ -6,6 +6,7 @@
 #define V8_DEBUG_DEBUG_SCOPE_INFO_H_
 
 #include <optional>
+#include <utility>
 
 #include "src/base/macros.h"
 #include "src/common/globals.h"
@@ -17,6 +18,7 @@ namespace internal {
 
 class DeclarationScope;
 class Isolate;
+class String;
 
 // Stack-allocated cursor for navigating and querying serialized scope trees
 // stored in DebugScriptScopeInfo.
@@ -55,11 +57,25 @@ class V8_EXPORT_PRIVATE DebugScriptScope {
   bool has_this_declaration() const;
   bool has_this_reference() const;
   bool has_simple_parameters() const;
+  bool has_arguments() const;
+  bool has_function_variable() const;
   bool sloppy_eval_can_extend_vars() const;
   bool needs_context() const;
 
   // Context Info, returns a valid ID only when needs_context() == true.
   int unique_id_in_script() const;
+
+  // Special Variables Info
+  // Returns a pair of {VariableAllocationInfo, index}. When allocated, the
+  // second element represents the stack slot index or context slot index of the
+  // receiver variable (or -1 if none/unallocated).
+  std::pair<VariableAllocationInfo, int> receiver_info() const;
+  // Returns a pair of {VariableAllocationInfo, index}. When allocated, the
+  // second element represents the stack slot index or context slot index of the
+  // arguments variable (or -1 if none/unallocated).
+  std::pair<VariableAllocationInfo, int> arguments_info() const;
+  std::pair<VariableAllocationInfo, int> function_variable_info() const;
+  Tagged<String> function_variable_name() const;
 
  private:
   DebugScriptScope(DirectHandle<DebugScriptScopeInfo> info, int scope_index,
@@ -67,8 +83,19 @@ class V8_EXPORT_PRIVATE DebugScriptScope {
       : info_(info), scope_index_(scope_index), offset_(offset) {}
 
   const uint8_t* payload() const;
+  const uint8_t* function_variable_payload() const;
   uint16_t flags() const;
   int parent_index() const;
+
+  // Chained offset calculation methods (private to DebugScriptScope).
+  size_t next_sibling_offset() const;
+  size_t context_id_offset() const;
+  size_t receiver_info_offset() const;
+  size_t arguments_info_offset() const;
+  size_t function_variable_offset() const;
+  size_t record_size() const;
+
+  friend class DebugScriptScopeInfo;
 
   DirectHandle<DebugScriptScopeInfo> info_;
   int scope_index_;

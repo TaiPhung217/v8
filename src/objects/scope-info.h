@@ -414,6 +414,19 @@ V8_OBJECT class ScopeInfo : public HeapObject {
   inline int module_variables_properties(int i) const;
   inline void set_module_variables_properties(int i, int value);
 
+  // Present only for module scopes with at least
+  // kScopeInfoMaxInlinedLocalNamesSize module variables: maps a module
+  // variable's name to its entry index in module_variables, so ModuleIndex()
+  // does not have to scan the entries linearly. (Bundlers routinely emit
+  // modules with hundreds of imported/exported bindings, and every free
+  // variable of every lazily compiled function inside them is resolved
+  // through ModuleIndex().)
+  inline bool HasModuleVariablesHashtable() const;
+  inline Tagged<NameToIndexHashTable> module_variables_hashtable() const;
+  inline void set_module_variables_hashtable(
+      Tagged<NameToIndexHashTable> value,
+      WriteBarrierMode mode = UPDATE_WRITE_BARRIER);
+
   inline Tagged<DependentCode> dependent_code() const;
   inline void set_dependent_code(Tagged<DependentCode> value,
                                  WriteBarrierMode mode = UPDATE_WRITE_BARRIER);
@@ -434,6 +447,7 @@ V8_OBJECT class ScopeInfo : public HeapObject {
   inline int OuterScopeInfoOffset() const;
   inline int ModuleInfoOffset() const;
   inline int ModuleVariablesOffset() const;
+  inline int ModuleVariablesHashtableOffset() const;
   inline int DependentCodeOffset() const;
   inline int UnusedParameterBitsOffset() const;
 
@@ -482,6 +496,7 @@ V8_OBJECT class ScopeInfo : public HeapObject {
   int ModuleInfoIndex() const;
   int ModuleVariableCountIndex() const;
   int ModuleVariablesIndex() const;
+  int ModuleVariablesHashtableIndex() const;
   int DependentCodeIndex() const;
   int UnusedParameterBitsIndex() const;
 
@@ -539,7 +554,6 @@ V8_OBJECT class ScopeInfo : public HeapObject {
   friend class ScopeIterator;
   friend class CodeStubAssembler;
   friend class TorqueGeneratedBitFieldAsserts;
-  friend std::ostream& operator<<(std::ostream& os, VariableAllocationInfo var);
 
  public:
   // Relaxed-atomic flags word (ScopeFlags bit layout).
@@ -583,7 +597,8 @@ inline constexpr int ScopeInfo::ConvertOffsetToIndex(int offset) {
   return index;
 }
 
-std::ostream& operator<<(std::ostream& os, VariableAllocationInfo var);
+V8_EXPORT_PRIVATE std::ostream& operator<<(std::ostream& os,
+                                           VariableAllocationInfo var);
 
 }  // namespace internal
 }  // namespace v8

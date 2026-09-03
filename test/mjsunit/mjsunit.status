@@ -76,6 +76,7 @@
 
   'turbolev/regress-532607231': [PASS, SLOW],
   'turbolev/regress-540717862': [PASS, SLOW],
+  'turboshaft/regress-554421904': [PASS, SLOW],
 
   # https://crbug.com/1129854
   'tools/log': ['arch == arm or arch == arm64', SKIP],
@@ -1234,6 +1235,7 @@
   'regress/regress-1447383': [SKIP],
   'regress/regress-crbug-335592010': [SKIP],
   'regress/regress-352402863': [SKIP],
+  'regress/regress-549231120': [SKIP],
   'string-localecompare-inline': [SKIP],
 
   # Non-BMP characters currently aren't considered identifiers without i18n
@@ -1288,6 +1290,7 @@
   'regress/regress-354626177': [SKIP],
   'regress/wasm/regress-398439335': [SKIP],
   'turbolev/regress-488090094': [SKIP],
+  'turbolev/dataview-deopt-oob': [SKIP],
   'maglev/regress-498816446-3': [SKIP],
   'maglev/regress-521604719': [SKIP],
 
@@ -3056,9 +3059,6 @@
 
   # Maglev deopts more aggressively on insufficient feedback.
   'array-literal-transitions': [SKIP],
-  'sealed-array-reduce': [SKIP],
-  'frozen-array-reduce': [SKIP],
-  'non-extensible-array-reduce': [SKIP],
 
   # Maglev doesn't inline String.prototype.includes.
   'optimized-string-includes': [SKIP],
@@ -3094,11 +3094,8 @@
   'regress/regress-1371935': [SKIP],
   'regress/regress-9441': [SKIP],
 
-  # Maglev doesn't inline some Dataview accessors.
+  # Maglev doesn't check detachment for DataView yet.
   'compiler/dataview-detached': [SKIP],
-  'compiler/dataview-deopt': [SKIP],
-  'compiler/dataview-get': [SKIP],
-  'compiler/dataview-set': [SKIP],
 
   # Maglev doesn't lower CallWithSpread.
   'compiler/regress-385386138': [SKIP],

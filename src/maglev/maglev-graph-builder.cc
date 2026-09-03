@@ -6595,7 +6595,7 @@ ReduceResult MaglevGraphBuilder::BuildGetKeyedProperty(
     case compiler::ProcessedFeedback::kNamedAccess: {
       ValueNode* key = GetAccumulator();
       RETURN_IF_ABORT(BuildCheckInternalizedStringValueOrByReference(
-          key, processed_feedback.AsNamedAccess().original_name_maybe_thin(),
+          key, processed_feedback.AsNamedAccess().name(),
           DeoptimizeReason::kKeyedAccessChanged));
 
       compiler::NameRef name = processed_feedback.AsNamedAccess().name();
@@ -6646,14 +6646,14 @@ ReduceResult MaglevGraphBuilder::VisitGetKeyedProperty() {
           compiler::ProcessedFeedback::kElementAccess &&
       processed_feedback->AsElementAccess().transition_groups().empty()) {
     if (auto constant = TryGetConstant<Name>(GetAccumulator())) {
-      compiler::NameRef name = constant.value();
       // IsArrayIndex requires IsUniqueName, i.e. thin strings must be
-      // unpacked. Subtle: Refine() still takes the original `name`.
-      compiler::NameRef unpacked_name = name.UnpackIfThin(broker());
+      // unpacked.
+      compiler::NameRef unpacked_name =
+          constant.value().UnpackIfThin(broker());
       if (unpacked_name.IsUniqueName() &&
           !unpacked_name.object()->IsArrayIndex()) {
-        processed_feedback =
-            &processed_feedback->AsElementAccess().Refine(broker(), name);
+        processed_feedback = &processed_feedback->AsElementAccess().Refine(
+            broker(), unpacked_name);
       }
     }
   }
@@ -6867,7 +6867,7 @@ ReduceResult MaglevGraphBuilder::VisitGetPrivateField() {
     case compiler::ProcessedFeedback::kNamedAccess: {
       RETURN_IF_ABORT(BuildCheckInternalizedStringValueOrByReference(
           name.value(),
-          processed_feedback.AsNamedAccess().original_name_maybe_thin(),
+          processed_feedback.AsNamedAccess().name(),
           DeoptimizeReason::kKeyedAccessChanged));
 
       compiler::NameRef name_ref = processed_feedback.AsNamedAccess().name();
@@ -6999,7 +6999,7 @@ ReduceResult MaglevGraphBuilder::BuildSetKeyedProperty(
 
     case compiler::ProcessedFeedback::kNamedAccess: {
       RETURN_IF_ABORT(BuildCheckInternalizedStringValueOrByReference(
-          index, processed_feedback.AsNamedAccess().original_name_maybe_thin(),
+          index, processed_feedback.AsNamedAccess().name(),
           DeoptimizeReason::kKeyedAccessChanged));
 
       RETURN_IF_DONE(TryBuildNamedAccess(
@@ -7808,8 +7808,10 @@ ReduceResult MaglevGraphBuilder::BuildEagerInlineCall(
   // Propagate frame information back to the caller.
   current_interpreter_frame_.set_known_node_aspects(
       inner_graph_builder.current_interpreter_frame_.known_node_aspects());
-  current_for_in_state.receiver_needs_map_check =
-      inner_graph_builder.current_for_in_state.receiver_needs_map_check;
+  if (inner_graph_builder.may_have_changed_maps()) {
+    may_have_changed_maps_ = true;
+    current_for_in_state.receiver_needs_map_check = true;
+  }
 
   // Resume execution using the final block of the inner builder.
   inner_graph_builder.reducer_.FlushNodesToBlock();
@@ -10214,9 +10216,13 @@ MaybeReduceResult MaglevGraphBuilder::TryReduceArrayPrototypePush(
                          {old_array_length,
                           GetInt32Constant(static_cast<int>(args.count()))}));
 
-  ValueNode* last_index;
-  GET_VALUE_OR_ABORT(last_index,
-                     AddNewNode<Int32Decrement>({new_array_length}));
+  // The last element will be stored at index old_length + count - 1, which
+  // for the common single-argument push is just the old length.
+  ValueNode* last_index = old_array_length;
+  if (args.count() > 1) {
+    GET_VALUE_OR_ABORT(last_index,
+                       AddNewNode<Int32Decrement>({new_array_length}));
+  }
 
   ValueNode* elements_array;
   GET_VALUE_OR_ABORT(elements_array, BuildLoadElements(receiver));
@@ -10271,10 +10277,14 @@ MaybeReduceResult MaglevGraphBuilder::TryReduceArrayPrototypePush(
 
     for (int index = 0; index < static_cast<int>(args_to_store.size());
          index++) {
-      ValueNode* store_index;
-      GET_VALUE_OR_ABORT(
-          store_index,
-          AddNewNode<Int32Add>({old_array_length, GetInt32Constant(index)}));
+      // The element is stored at index old_length + index; don't emit an
+      // "old_length + 0" node for the first element.
+      ValueNode* store_index = old_array_length;
+      if (index != 0) {
+        GET_VALUE_OR_ABORT(
+            store_index,
+            AddNewNode<Int32Add>({old_array_length, GetInt32Constant(index)}));
+      }
 
       ValueNode* value = args_to_store[index];
 
@@ -11247,8 +11257,13 @@ ReduceResult MaglevGraphBuilder::BuildCheckInternalizedStringValueOrByReference(
           constant->equals(*expected_primitive)) {
         return ReduceResult::Done();
       }
-      // If it is a constant but not the expected primitive, it will definitely
-      // fail the BuildCheckValueByReference below and deopt.
+      // The constant may be a ThinString referring to the expected string.
+      if (constant->IsString() &&
+          constant->AsString().UnpackIfThin(broker()).equals(expected_string)) {
+        return ReduceResult::Done();
+      }
+      // Otherwise it will definitely fail the BuildCheckValueByReference below
+      // and deopt.
     } else {
       if (IntersectType(GetType(node), allowed_type) == NodeType::kNone) {
         return reducer_.EmitUnconditionalDeopt(reason);
@@ -11636,20 +11651,14 @@ MaglevGraphBuilder::TryExtractArgumentsFromElements(
 
   auto build_arguments = [&](int32_t capacity, auto get_element_at)
       -> std::optional<base::SmallVector<ValueNode*, 8>> {
-    int32_t length = 0;
-    if (arguments_object->map()->IsJSArrayMap()) {
-      ValueNode* length_node =
-          arguments_object->get(offsetof(JSArray, length_));
-      std::optional<int32_t> maybe_length = TryGetInt32Constant(length_node);
-      if (!maybe_length.has_value() || *maybe_length < 0 ||
-          *maybe_length > capacity) {
-        return {};
-      }
-      length = *maybe_length;
-    } else {
-      DCHECK(arguments_object->map()->IsJSArgumentsObjectMap());
-      length = capacity;
+    ValueNode* length_node =
+        arguments_object->get(JSStrictArgumentsObject::kLengthOffset);
+    std::optional<int32_t> maybe_length = TryGetInt32Constant(length_node);
+    if (!maybe_length.has_value() || *maybe_length < 0 ||
+        *maybe_length > capacity) {
+      return {};
     }
+    int32_t length = *maybe_length;
 
     if (num_args_to_copy + static_cast<size_t>(length) >
         kMaxArityForOptimizedSpread) {
@@ -11736,7 +11745,7 @@ MaglevGraphBuilder::TryExtractArgumentsFromElements(
   }
 
   if (auto* inlined_allocation = elements_value->TryCast<InlinedAllocation>()) {
-    VirtualObject* elements = inlined_allocation->object();
+    VirtualObject* elements = GetObjectFromAllocation(inlined_allocation);
     ValueNode* elements_length_node =
         elements->get(offsetof(FixedArray, length_));
     std::optional<int32_t> maybe_elements_length =
@@ -11807,9 +11816,13 @@ ReduceResult MaglevGraphBuilder::ReduceCallWithArrayLikeForArgumentsObject(
       arguments_object->get(offsetof(JSObject, elements_));
   if (ArgumentsElements* arguments_elements =
           elements_value->TryCast<ArgumentsElements>()) {
-    args.PopArrayLikeArgument();
-    return BuildCallForwardArgumentsElements<CallForwardVarargs>(
-        target_node, args, arguments_elements);
+    ValueNode* length_node =
+        arguments_object->get(JSStrictArgumentsObject::kLengthOffset);
+    if (length_node->Is<ArgumentsLength>() || length_node->Is<RestLength>()) {
+      args.PopArrayLikeArgument();
+      return BuildCallForwardArgumentsElements<CallForwardVarargs>(
+          target_node, args, arguments_elements);
+    }
   }
 
   std::optional<base::SmallVector<ValueNode*, 8>> arg_list =
@@ -11836,6 +11849,11 @@ MaglevGraphBuilder::TryReduceConstructWithSpreadForArgumentsObject(
   ValueNode* elements_value =
       arguments_object->get(offsetof(JSObject, elements_));
   if (auto* arguments_elements = elements_value->TryCast<ArgumentsElements>()) {
+    ValueNode* length_node =
+        arguments_object->get(JSStrictArgumentsObject::kLengthOffset);
+    if (!length_node->Is<ArgumentsLength>() && !length_node->Is<RestLength>()) {
+      return {};
+    }
     if (!broker()->dependencies()->DependOnArrayIteratorProtector()) {
       return {};
     }
@@ -11892,8 +11910,8 @@ MaglevGraphBuilder::TryGetNonEscapingArgumentsOrArray(ValueNode* value) {
     return {};
   }
 
-  VirtualObject* object = alloc->object();
-  if (!object->has_static_map()) {
+  VirtualObject* object = GetObjectFromAllocation(alloc);
+  if (!object || !object->has_static_map()) {
     return {};
   }
   compiler::MapRef map = *object->map();
@@ -11966,6 +11984,11 @@ MaybeReduceResult MaglevGraphBuilder::TryReduceCallWithSpreadForArgumentsObject(
 
   auto* elements_value = arguments_object->get(offsetof(JSObject, elements_));
   if (auto* arguments_elements = elements_value->TryCast<ArgumentsElements>()) {
+    ValueNode* length_node =
+        arguments_object->get(JSStrictArgumentsObject::kLengthOffset);
+    if (!length_node->Is<ArgumentsLength>() && !length_node->Is<RestLength>()) {
+      return {};
+    }
     if (!broker()->dependencies()->DependOnArrayIteratorProtector()) {
       return {};
     }
@@ -14683,19 +14706,21 @@ ReduceResult MaglevGraphBuilder::VisitJumpLoop() {
   BytecodeOffset jump_loop_osr_offset =
       BytecodeOffset(iterator_.current_offset());
 
-  bool osr =
-      ShouldEmitOsrInterruptBudgetChecks(feedback_slot, jump_loop_osr_offset);
-  if (ShouldEmitInterruptBudgetChecks()) {
-    int reduction = relative_jump_bytecode_offset *
-                    v8_flags.osr_from_maglev_interrupt_scale_factor;
-    BytecodeOffset osr_offset =
-        osr ? jump_loop_osr_offset : BytecodeOffset::None();
-    FeedbackSlot slot = osr ? feedback_slot : FeedbackSlot::Invalid();
-    RETURN_IF_ABORT(AddNewNode<ReduceInterruptBudgetForLoop>(
-        {GetFeedbackCell()}, reduction > 0 ? reduction : 1, osr_offset,
-        loop_offset, slot));
-  } else {
-    RETURN_IF_ABORT(AddNewNode<HandleNoHeapWritesInterrupt>({}));
+  if (V8_LIKELY(!v8_flags.disable_loop_stack_checks)) {
+    bool osr =
+        ShouldEmitOsrInterruptBudgetChecks(feedback_slot, jump_loop_osr_offset);
+    if (ShouldEmitInterruptBudgetChecks()) {
+      int reduction = relative_jump_bytecode_offset *
+                      v8_flags.osr_from_maglev_interrupt_scale_factor;
+      BytecodeOffset osr_offset =
+          osr ? jump_loop_osr_offset : BytecodeOffset::None();
+      FeedbackSlot slot = osr ? feedback_slot : FeedbackSlot::Invalid();
+      RETURN_IF_ABORT(AddNewNode<ReduceInterruptBudgetForLoop>(
+          {GetFeedbackCell()}, reduction > 0 ? reduction : 1, osr_offset,
+          loop_offset, slot));
+    } else {
+      RETURN_IF_ABORT(AddNewNode<HandleNoHeapWritesInterrupt>({}));
+    }
   }
 
   bool is_peeled_loop = loop_headers_to_peel_.Contains(target);

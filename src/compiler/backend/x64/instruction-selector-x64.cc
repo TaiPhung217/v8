@@ -1532,7 +1532,9 @@ void VisitStoreCommon(InstructionSelector* selector,
                        : kArchStoreWithWriteBarrier;
       const RecordWriteMode record_write_mode =
           WriteBarrierKindToRecordWriteMode(write_barrier_kind);
-      code |= RecordWriteModeField::encode(record_write_mode);
+      code |= is_atomic
+                  ? AtomicStoreRecordWriteModeField::encode(record_write_mode)
+                  : RecordWriteModeField::encode(record_write_mode);
     }
     code |= AddressingModeField::encode(addressing_mode);
     code |= AccessModeField::encode(access_mode);
@@ -3986,6 +3988,35 @@ void VisitAtomicCompareExchange(InstructionSelector* selector, OpIndex node,
 }
 
 }  // namespace
+
+#ifdef V8_ENABLE_APX_F
+// Per-arch ccmp cascade hooks (driven by TryCascadeCcmpFuseOrEmit in
+// instruction-selector.cc). ccmp is an APX instruction on x64, so APX-gated.
+bool InstructionSelector::SupportsCcmpBranchCascade() const {
+  return UseApxCcmp();
+}
+
+bool InstructionSelector::CcmpCascadeConstantOk(OpIndex node,
+                                                bool /*is_ccmp_operand*/) {
+  // Only fuse immediates: non-immediate constants would force LEA
+  // materialization (code bloat, regression). The gate uses the same
+  // CanBeImmediate predicate the emission does for both roles, so no role
+  // distinction is needed here.
+  return CanBeImmediate(this, node);
+}
+
+InstructionCode InstructionSelector::CcmpCmpOpcode(
+    RegisterRepresentation rep) const {
+  return X64GetCmpOpcode(rep, /*is_test=*/false);
+}
+
+void InstructionSelector::EmitCcmpCompareChain(CompareSequence& sequence,
+                                               RegisterRepresentation rep,
+                                               FlagsContinuation* cont) {
+  VisitCompareChain(this, sequence.left(), sequence.right(), rep,
+                    sequence.opcode(), cont);
+}
+#endif  // V8_ENABLE_APX_F
 
 // Shared routine for word comparison against zero.
 void InstructionSelector::VisitWordCompareZero(OpIndex user, OpIndex value,

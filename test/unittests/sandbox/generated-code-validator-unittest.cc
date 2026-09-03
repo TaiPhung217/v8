@@ -130,6 +130,8 @@ TEST_F(GeneratedCodeValidatorTest, ValidateDecompressionPasses) {
   __ ret(0);
 #elif V8_TARGET_ARCH_ARM64
   __ Orr(x13, kPtrComprCageBaseRegister, x13);
+  __ DecompressTagged(x13, x13);
+  __ Add(x13, kPtrComprCageBaseRegister, Operand(w13, UXTW, 0));
   __ ret();
 #else
 #error "Unsupported architecture for GeneratedCodeValidatorTest"
@@ -137,6 +139,25 @@ TEST_F(GeneratedCodeValidatorTest, ValidateDecompressionPasses) {
 
   CheckValidationSucceeds(i_isolate, masm);
 }
+
+#if V8_TARGET_ARCH_ARM64
+
+TEST_F(GeneratedCodeValidatorTest, ValidateCageBaseWritebackFails) {
+  static_assert(kPtrComprCageBaseRegister != no_reg);
+  Isolate* i_isolate = this->i_isolate();
+  auto buffer = AllocateAssemblerBuffer();
+  MacroAssembler masm(i_isolate, CodeObjectRequired{false},
+                      buffer->CreateView());
+
+  // Pre-indexed load with writeback updating the cage base register.
+  __ Ldr(x0, MemOperand(kPtrComprCageBaseRegister, 16, PreIndex));
+  __ ret();
+
+  CheckValidationFails(i_isolate, masm,
+                       "Instruction accesses cage bage register at operand 1");
+}
+
+#endif  // V8_TARGET_ARCH_ARM64
 
 #undef __
 
