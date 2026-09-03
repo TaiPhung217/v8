@@ -610,6 +610,16 @@ class WasmRevecAnalyzer {
   void MergeSLPTree(SLPTree& slp_tree);
   bool ShouldReduce() const { return should_reduce_; }
 
+  // Percentage (0-100) of this function's SIMD128 operations that were
+  // combined into SIMD256 operations. Only meaningful once the analysis has
+  // decided to vectorize (i.e. when ShouldReduce() is true).
+  int revectorized_percent() const {
+    if (simd128_op_count_ == 0) return 0;
+    DCHECK_LE(revectorized_simd128_count_, simd128_op_count_);
+    return static_cast<int>(revectorized_simd128_count_ * 100 /
+                            simd128_op_count_);
+  }
+
   PackNode* GetPackNode(const OpIndex ig_index) {
     auto it = revectorizable_node_.find(ig_index);
     if (it != revectorizable_node_.end()) {
@@ -665,6 +675,12 @@ class WasmRevecAnalyzer {
   ZoneUnorderedMap<OpIndex, ZoneVector<PackNode*>>
       revectorizable_intersect_node_{phase_zone_};
   bool should_reduce_{false};
+  // Numerator/denominator for revectorized_percent(): number of SIMD128
+  // operations combined into SIMD256, and the total number of SIMD128
+  // operations in the function. Force-packed and intersect nodes are excluded
+  // from the numerator.
+  size_t revectorized_simd128_count_{0};
+  size_t simd128_op_count_{0};
   Simd128UseMap* use_map_{nullptr};
   ZoneUnorderedSet<OpIndex> reorder_inputs_{phase_zone_};
   // Used as a local hash-set, always clear after use.
@@ -1057,11 +1073,16 @@ class WasmRevecReducer : public UniformReducerAdapter<WasmRevecReducer, Next> {
               __ input_graph().Get(load_index).template Cast<LoadOp>();
 
           const int bytes_per_lane = is_32 ? 4 : 8;
-          // splat_index*bytes_per_lane is at most 28; load.offset is the WASM
-          // memarg immediate (up to INT32_MAX). Compute in int64 to avoid
-          // signed-int32 overflow that would sign-extend to a negative base.
+          // Mask splat_index to get the lane offset within the 128-bit vector.
+          // For 32-bit lanes: mask is 3 (bits 0-1), for 64-bit lanes: mask is 1
+          // (bit 0).
+          const int lane_mask = is_32 ? 3 : 1;
+          // splat_index*bytes_per_lane is at most 12 (for 32-bit) or 8 (for
+          // 64-bit); load.offset is the WASM memarg immediate (up to
+          // INT32_MAX). Compute in int64 to avoid signed-int32 overflow that
+          // would sign-extend to a negative base.
           const int64_t splat_index =
-              pnode->info().splat_index() * bytes_per_lane;
+              (pnode->info().splat_index() & lane_mask) * bytes_per_lane;
           const int64_t offset = splat_index + load.offset;
 
           V<WordPtr> base = __ WordPtrAdd(__ MapToNewGraph(load.base()),
