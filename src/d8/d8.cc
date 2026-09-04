@@ -2912,19 +2912,9 @@ MaybeLocal<Context> Shell::CreateRealm(
   Local<ObjectTemplate> global_template = CreateGlobalTemplate(isolate);
 
   v8::MicrotaskQueue* microtask_queue = nullptr;
-#ifdef V8_CPPGC_MICROTASK_QUEUE
   if (create_own_microtask_queue) {
     microtask_queue = v8::MicrotaskQueue::New(isolate);
   }
-#else
-  std::unique_ptr<v8::MicrotaskQueue> new_mq;
-  if (create_own_microtask_queue) {
-    START_ALLOW_USE_DEPRECATED()
-    new_mq = v8::MicrotaskQueue::New(isolate);
-    END_ALLOW_USE_DEPRECATED()
-    microtask_queue = new_mq.get();
-  }
-#endif  // V8_CPPGC_MICROTASK_QUEUE
 
   Local<Context> context =
       Context::New(isolate, nullptr, global_template, global_object,
@@ -2935,16 +2925,9 @@ MaybeLocal<Context> Shell::CreateRealm(
 
   if (index < 0) {
     index = static_cast<int>(data->realms_.size());
-#ifdef V8_CPPGC_MICROTASK_QUEUE
     data->realms_.emplace_back(isolate, context);
-#else
-    data->realms_.emplace_back(isolate, context, std::move(new_mq));
-#endif
   } else {
     data->realms_[index].context.Reset(isolate, context);
-#ifndef V8_CPPGC_MICROTASK_QUEUE
-    data->realms_[index].microtask_queue = std::move(new_mq);
-#endif
   }
 
   data->realms_[index].context.AnnotateStrongRetainer(kGlobalHandleLabel);
@@ -2960,9 +2943,6 @@ void Shell::DisposeRealm(const v8::FunctionCallbackInfo<v8::Value>& info,
   PerIsolateData* data = PerIsolateData::Get(isolate);
   Local<Context> context = data->realms_[index].context.Get(isolate);
   data->realms_[index].context.Reset();
-#ifndef V8_CPPGC_MICROTASK_QUEUE
-  data->realms_[index].microtask_queue.reset();
-#endif
   context->DetachGlobal();
   // ContextDisposedNotification expects the disposed context to be entered.
   v8::Context::Scope scope(context);
@@ -7300,6 +7280,17 @@ bool Shell::SetOptions(int argc, char* argv[]) {
     FATAL("Flag --expose-fast-api is incompatible with --stress-snapshot.");
   }
 
+  if (options.trace_enabled && i::v8_flags.predictable) {
+    if (check_d8_flag_contradictions) {
+      FATAL("Flag --enable-tracing is incompatible with --predictable.");
+    } else {
+      fprintf(stderr,
+              "Warning: disabling flag --enable-tracing due to conflicting "
+              "flags\n");
+      options.trace_enabled = false;
+    }
+  }
+
   // Set up isolated source groups.
   options.num_isolates = 1;
   for (int i = 1; i < argc; i++) {
@@ -8403,12 +8394,14 @@ int Shell::Main(int argc, char* argv[]) {
                  << bitmap.size() << std::endl;
           iteration_counter++;
         }
-        uint8_t* shmem_edges = cov_get_shmem_edges();
+        // This is run once per REPRL loop. In case of crash the coverage of
+        // crash will not be stored in shared memory. Therefore, it would be
+        // useful, if we could store these coverage information into shared
+        // memory in real time.
         if (options.fuzzilli_enable_builtins_coverage &&
-            cov_has_builtins_edges() && shmem_edges != nullptr) {
-          i::BasicBlockProfiler::Get()->UpdateBuiltinsCoverageAndReset(
-              reinterpret_cast<i::Isolate*>(isolate), cov_get_builtins_start(),
-              shmem_edges);
+            cov_has_builtins_edges()) {
+          i::BasicBlockProfiler::Get()->ForEachExecutedBlockAndReset(
+              reinterpret_cast<i::Isolate*>(isolate), cov_set_builtin_edge);
         }
         // In REPRL mode, stdout and stderr can be regular files, so they need
         // to be flushed after every execution

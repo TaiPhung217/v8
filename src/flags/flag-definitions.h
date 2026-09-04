@@ -2174,6 +2174,9 @@ DEFINE_ALIAS_BOOL_WITH_COMMENT(experimental_wasm_js_interop, wasm_js_interop,
 DEFINE_IMPLICATION(wasm_js_interop, wasm_custom_descriptors)
 DEFINE_BOOL(wasm_custom_descriptors_permitted, true,
             "Emergency off-switch for Custom Descriptors Origin Trial")
+DEFINE_EXPERIMENTAL_FEATURE(wasm_merged_descriptors,
+                            "merge Custom Descriptor into v8::internal::Map")
+DEFINE_IMPLICATION(wasm_merged_descriptors, wasm_custom_descriptors)
 
 DEFINE_DEBUG_BOOL(
     wasm_opt, true,
@@ -3037,11 +3040,6 @@ DEFINE_BOOL(
     "an existing Script if one is found in the Isolate compilation cache")
 DEFINE_BOOL(verify_code_merge, false, "Verify scope infos after merge")
 
-// Fix https://issues.chromium.org/u/1/issues/366783806 before enabling.
-DEFINE_BOOL(
-    experimental_embedder_instance_types, false,
-    "enable type checks based on instance types provided by the embedder")
-DEFINE_IMPLICATION(experimental_embedder_instance_types, experimental)
 
 // bootstrapper.cc
 DEFINE_BOOL(expose_gc, false, "expose gc extension")
@@ -4229,6 +4227,9 @@ DEFINE_NEG_IMPLICATION(predictable, maglev_build_code_on_background)
 DEFINE_NEG_IMPLICATION(predictable, maglev_destroy_on_background)
 #endif  // V8_ENABLE_MAGLEV
 DEFINE_NEG_IMPLICATION(predictable, concurrent_cache_deserialization)
+#if V8_ENABLE_WEBASSEMBLY
+DEFINE_NEG_IMPLICATION(predictable, wasm_test_streaming)
+#endif  // V8_ENABLE_WEBASSEMBLY
 // Avoid random seeds in predictable mode.
 DEFINE_VALUE_IMPLICATION(predictable && random_seed == 0, random_seed, 12347)
 

@@ -6995,6 +6995,7 @@ bool IsJSReceiverSafeToFreeze(i::InstanceType obj_type) {
       return true;
 #if V8_ENABLE_WEBASSEMBLY
     case i::WASM_ARRAY_TYPE:
+    case i::WASM_CUSTOM_MAP_TYPE:
     case i::WASM_STRUCT_TYPE:
     case i::WASM_TAG_OBJECT_TYPE:
 #endif  // V8_ENABLE_WEBASSEMBLY
@@ -11245,7 +11246,6 @@ bool v8::Object::IsCodeLike(v8::Isolate* v8_isolate) const {
 }
 
 // static
-#ifdef V8_CPPGC_MICROTASK_QUEUE
 MicrotaskQueue* MicrotaskQueue::New(Isolate* v8_isolate,
                                     MicrotasksPolicy policy) {
   auto* microtask_queue =
@@ -11253,7 +11253,6 @@ MicrotaskQueue* MicrotaskQueue::New(Isolate* v8_isolate,
   microtask_queue->set_microtasks_policy(policy);
   return microtask_queue;
 }
-#endif  // V8_CPPGC_MICROTASK_QUEUE
 
 MicrotasksScope::MicrotasksScope(Local<Context> v8_context,
                                  MicrotasksScope::Type type)
