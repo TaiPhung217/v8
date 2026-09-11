@@ -19,13 +19,14 @@ import argparse
 import os
 import sys
 
-if __name__ == "__main__" and __package__ is None:
-  # Direct script invocation (ninja runs `python3 tools/metagen/metagen.py`)
-  # puts tools/metagen/ on sys.path, not its parent, so the `metagen`
-  # package is not importable yet. Bazel's launcher handles this via the
-  # py_binary `imports` attribute; a plain script run has no such hook.
-  sys.path.insert(0,
-                  os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+if __name__ == "__main__":
+  # Running this file as a script -- ninja runs `python3
+  # tools/metagen/metagen.py`, Bazel's launcher execs it out of the
+  # runfiles tree -- puts tools/metagen/ on sys.path, not its parent, so
+  # the `metagen` package is not importable yet.
+  _PARENT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+  if _PARENT not in sys.path:
+    sys.path.insert(0, _PARENT)
 
 # Don't import cpp_hier yet -- it pulls in clang.cindex at module-load
 # time, which requires the bindings to be resolvable. We bootstrap that
@@ -100,14 +101,24 @@ def main() -> int:
       "--libclang-so to warn if the loaded libclang is older than the "
       "toolchain whose builtin headers metagen parses against.")
   p.add_argument(
+      "--clang-resource-dir",
+      default=None,
+      help="Path to the clang toolchain's resource dir (lib/clang/<N>, "
+      "the directory whose include/ holds stddef.h, stdarg.h and the arch "
+      "intrinsics). Passed to the parse as -resource-dir=, which lets the "
+      "driver order the builtin headers itself. Preferred over "
+      "--clang-builtin-headers-dir wherever the canonical layout exists. "
+      "Mutually exclusive with it.")
+  p.add_argument(
       "--clang-builtin-headers-dir",
-      required=True,
-      help="Directory holding the clang builtin headers (stddef.h, "
-      "stdarg.h, the arch intrinsics). Appended as -isystem to the "
-      "libclang parse flags. Required and never probed for: the build "
+      default=None,
+      help="Directory holding the clang builtin headers, for build systems "
+      "that stage them flat, with no lib/clang/<N> hierarchy for "
+      "-resource-dir= to point at (Bazel). Appended as a system-include dir "
+      "instead, which takes the path directly. Never probed for: the build "
       "system knows where it staged them, and in a sandbox any path we "
-      "guessed would be an undeclared input. In GN this is the bundled "
-      "toolchain's lib/clang/<N>/include.")
+      "guessed would be an undeclared input. Mutually exclusive with "
+      "--clang-resource-dir.")
   p.add_argument(
       "--driver",
       required=True,
@@ -142,11 +153,23 @@ def main() -> int:
       "cflags clang uses for that target. Mutually exclusive with "
       "--compile-commands.")
   p.add_argument(
+      "--source-root",
+      default=None,
+      help="GN source root (the directory containing the build's .gn file). "
+      "Required with --build-dir.")
+  p.add_argument(
       "--flags-from-target",
       default=None,
       help="GN label of a representative compiled target whose flags "
       "`gn desc` reports (e.g. //v8:v8_base_without_compiler). Required "
       "with --build-dir.")
+  p.add_argument(
+      "--flags-toolchain",
+      default=None,
+      help="GN label of the toolchain to resolve --flags-from-target in "
+      "(e.g. //build/toolchain/linux:clang_x64). Defaults to the build's "
+      "default toolchain, which is only right when the action and the "
+      "target it queries share it.")
   p.add_argument(
       "--flags-dependency",
       default=None,
@@ -154,11 +177,16 @@ def main() -> int:
       "so a flag change reruns metagen. Required with --build-dir when "
       "--depfile is used.")
   p.add_argument(
-      "--toolchain-env",
-      default=None,
-      help="Path (relative to --build-dir) of a toolchain environment "
-      "block, e.g. environment.x64. Windows only: its INCLUDE is "
-      "re-exported so clang-cl finds the SDK headers gn desc omits.")
+      "--extra-flag",
+      action="append",
+      default=[],
+      metavar="FLAG",
+      help="A parse flag the build system supplies outside the target's "
+      "cflags, repeatable. Windows: the SDK/UCRT include flags, which the "
+      "toolchain interpolates into its tool command template rather than "
+      "into cflags, so `gn desc` never reports them.")
+  p.add_argument(
+      "-v", "--verbose", action="store_true", help="Enable verbose logging.")
   p.add_argument(
       "--compile-commands",
       default=None,
@@ -166,6 +194,10 @@ def main() -> int:
       "wrote (Bazel emits one synthesized via cc_common). Same shape "
       "as compile_commands.json. Mutually exclusive with --build-dir.")
   args = p.parse_args()
+
+  def verbose_print(msg: str) -> None:
+    if args.verbose:
+      print(msg, file=sys.stderr)
 
   v8_root = os.path.abspath(args.v8_root)
 
@@ -218,6 +250,11 @@ def main() -> int:
         "required.",
         file=sys.stderr)
     return 1
+  if bool(args.build_dir) != bool(args.source_root):
+    print(
+        "error: --build-dir and --source-root must be given together.",
+        file=sys.stderr)
+    return 1
 
   driver_path = os.path.abspath(args.driver)
 
@@ -228,18 +265,12 @@ def main() -> int:
           file=sys.stderr)
       return 1
     build_dir = os.path.abspath(args.build_dir)
+    flags_target = args.flags_from_target
+    if args.flags_toolchain:
+      flags_target = f"{flags_target}({args.flags_toolchain})"
     raw_flags, parse_cwd, cl_mode = compile_flags.get_compile_args_from_gn_desc(
-        build_dir, args.flags_from_target)
-    flags_source = f"build_dir={build_dir} (gn desc {args.flags_from_target})"
-    # Windows: the SDK/UCRT include dirs reach the real compile via the
-    # toolchain's INCLUDE env var, not flags, so gn desc omits them and
-    # this action does not inherit them. Re-export the build's own
-    # INCLUDE (from environment.<arch>) so clang-cl resolves them.
-    if args.toolchain_env:
-      include = compile_flags.load_toolchain_include(build_dir,
-                                                     args.toolchain_env)
-      if include:
-        os.environ["INCLUDE"] = include
+        build_dir, flags_target, os.path.abspath(args.source_root))
+    flags_source = f"build_dir={build_dir} (gn desc {flags_target})"
   else:
     cc_json = os.path.abspath(args.compile_commands)
     raw_flags, parse_cwd, cl_mode = compile_flags.get_compile_args_from_file(
@@ -264,29 +295,37 @@ def main() -> int:
         file=sys.stderr)
     return 1
 
-  # Builtin headers (stddef.h etc.). The llvm-libclang package ships
-  # only the .so + bindings, no headers of its own, so these come from
-  # the clang toolchain package -- rebuilt and rolled from the same LLVM
-  # revision in lockstep, so they always match the parsing library.
-  #
-  # Added as a system-include dir rather than via -resource-dir= because
-  # the two builds stage these differently: GN has the toolchain's
-  # canonical lib/clang/<N>/include layout that -resource-dir= expects,
-  # whereas a sandboxed Bazel action gets a flat staging dir with no such
-  # hierarchy. A system-include dir takes the path directly, so one flag
-  # spells both.
-  builtin_headers_dir = os.path.abspath(args.clang_builtin_headers_dir)
-  if not os.path.isdir(builtin_headers_dir):
+  # Builtin headers (stddef.h etc.). llvm-libclang ships only the .so and
+  # bindings, so its own resource dir has no headers in it. We take them
+  # from the clang toolchain package instead, which rolls from the same
+  # LLVM revision and so always matches the parsing library.
+  if bool(args.clang_resource_dir) == bool(args.clang_builtin_headers_dir):
     print(
-        f"[metagen] --clang-builtin-headers-dir does not exist:\n"
-        f"  {builtin_headers_dir}",
+        "error: exactly one of --clang-resource-dir or "
+        "--clang-builtin-headers-dir is required.",
         file=sys.stderr)
     return 1
-  # -fsyntax-only, -ferror-limit= and -D carry `CLOption` visibility in clang's
-  # Options.td, so one spelling works under both drivers. -isystem does NOT:
-  # the clang-cl driver drops it with an ignorable -Wunknown-argument warning,
-  # and the parse then fails on the first intrinsics header. Its cl-mode
-  # equivalent is -imsvc.
+  resource_dir = None
+  builtin_headers_dir = None
+  if args.clang_resource_dir:
+    resource_dir = os.path.abspath(args.clang_resource_dir)
+    flag = "--clang-resource-dir"
+    probe = os.path.join(resource_dir, "include", "stddef.h")
+  else:
+    builtin_headers_dir = os.path.abspath(args.clang_builtin_headers_dir)
+    flag = "--clang-builtin-headers-dir"
+    probe = os.path.join(builtin_headers_dir, "stddef.h")
+  if not os.path.isfile(probe):
+    print(
+        f"[metagen] {flag} does not hold clang's builtin headers:\n"
+        f"  {probe} not found",
+        file=sys.stderr)
+    return 1
+  # -fsyntax-only, -ferror-limit=, -resource-dir= and -D carry `CLOption`
+  # visibility in clang's Options.td, so one spelling works under both
+  # drivers. -isystem does NOT: the clang-cl driver drops it with an
+  # ignorable -Wunknown-argument warning, and the parse then fails on the
+  # first intrinsics header. Its cl-mode equivalent is -imsvc.
   sysinclude = "-imsvc" if cl_mode else "-isystem"
 
   prefix = [
@@ -300,9 +339,9 @@ def main() -> int:
       "-ferror-limit=0",
       # A sanitizer build's -fsanitize= flags are kept, so that
       # __has_feature() agrees with the -D_LIBCPP_INSTRUMENTED_WITH_*
-      # the same build passes. Their ignore lists are not: clang
-      # resolves the implicit ones against its resource dir, which the
-      # llvm-libclang package does not carry.
+      # the same build passes. Their ignore lists are not: clang looks for
+      # the implicit ones in the resource dir, where we'd either find
+      # nothing or read files this action never declared.
       "-fno-sanitize-ignorelist",
       # Tell src/objects/instance-type.h to skip its file-scope
       # references to IT symbols metagen hasn't emitted yet. See the
@@ -318,14 +357,6 @@ def main() -> int:
   if cl_mode:
     prefix.insert(0, "--driver-mode=cl")
 
-  # The builtin-header dir goes LAST, after the toolchain's own include
-  # flags. libc++ ships a <stddef.h> wrapper that defines _LIBCPP_STDDEF_H
-  # and then #include_next's clang's; put the builtin dir ahead of
-  # libc++'s -isystem and <cstddef> reaches clang's copy directly, which
-  # trips libc++'s explicit "C++ Standard Library headers before any C
-  # Standard Library" #error. Search order follows flag order among
-  # -isystem dirs, so appending keeps libc++ first while still supplying
-  # the builtins nothing else provides.
   # Tracing declares nothing the harvest reads, but all-objects.h reaches
   # src/tracing/trace-event.h, whose perfetto path pulls in generated protos
   # (perfetto is on in Chromium builds). Taking the non-perfetto path instead
@@ -340,22 +371,33 @@ def main() -> int:
       "-UV8_USE_PERFETTO_SDK",
   ]
 
-  flags = (
-      prefix + raw_flags + no_perfetto + [f"{sysinclude}{builtin_headers_dir}"])
+  # --extra-flag goes ahead of the queried flags, matching where the
+  # toolchain's command template puts them.
+  flags = prefix + args.extra_flag + raw_flags + no_perfetto
 
-  print(
-      f"Harvesting class hierarchy from {os.path.relpath(driver_path, v8_root)} "
-      f"({flags_source})...",
-      file=sys.stderr)
+  # The builtin headers have to sit after libc++'s include dir and before
+  # the platform SDK's.
+  #
+  # -resource-dir= lets the driver place them, and it gets that right in
+  # both modes, so prefer it. That relies on libc++ arriving as -I, since
+  # the driver sorts -imsvc dirs after the resource dir. Only a flat
+  # staging dir needs the include-dir spelling, which we append: right for
+  # libc++, and right on Windows only while the SDK dirs arrive as
+  # /winsysroot.
+  if resource_dir:
+    flags.append(f"-resource-dir={resource_dir}")
+  else:
+    flags.append(f"{sysinclude}{builtin_headers_dir}")
+
+  verbose_print(f"Harvesting class hierarchy from "
+                f"{os.path.relpath(driver_path, v8_root)} ({flags_source})...")
   out_dir = os.path.abspath(args.out)
   os.makedirs(out_dir, exist_ok=True)
   path = os.path.join(out_dir, "instance-types.h")
 
   cpp_res = cpp_hier.scan_cpp(v8_root, driver_path, flags, parse_cwd=parse_cwd)
-  print(
-      f"  {len(cpp_res.classes)} classes, "
-      f"{len(cpp_res.provenance)} provenance files (from C++)",
-      file=sys.stderr)
+  verbose_print(f"  {len(cpp_res.classes)} classes, "
+                f"{len(cpp_res.provenance)} provenance files (from C++)")
   classes = cpp_res.classes
 
   # The files the harvest read a fact out of, not everything the parse
@@ -456,11 +498,11 @@ def main() -> int:
   if os.path.exists(path):
     with open(path) as f:
       if f.read() == generated:
-        print(f"Unchanged {path}", file=sys.stderr)
+        verbose_print(f"Unchanged {path}")
         return 0
   with open(path, "w") as f:
     f.write(generated)
-  print(f"Wrote {path}", file=sys.stderr)
+  verbose_print(f"Wrote {path}")
   return 0
 
 

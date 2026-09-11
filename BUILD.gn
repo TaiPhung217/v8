@@ -25,6 +25,11 @@ if (is_clang) {
   import("//build/config/clang/clang.gni")
 }
 
+if (is_win && v8_use_metagen_instance_types) {
+  # For the SDK include flags, see `metagen_instance_types_h`.
+  import("//build/toolchain/win/win_toolchain_data.gni")
+}
+
 if (v8_enable_temporal_support) {
   import("//build/config/rust.gni")
 }
@@ -2478,11 +2483,9 @@ if (v8_use_metagen_instance_types) {
     }
   }
 
-  # Clang's builtin headers (stddef.h, stdarg.h, the arch intrinsics).
-  # llvm-libclang ships none, so they come from the clang toolchain, which
-  # rolls from the same LLVM revision and therefore matches it.
-  _metagen_builtin_headers_dir =
-      "$clang_base_path/lib/clang/$clang_version/include"
+  # The clang toolchain's resource dir contains builting headers
+  # include/{stddef.h,stdarg.h,...}.
+  _metagen_clang_resource_dir = "$clang_base_path/lib/clang/$clang_version"
   _metagen_flags_target = ":v8_base_without_compiler"
   _metagen_flags_target_ninja =
       get_label_info(_metagen_flags_target, "target_out_dir") +
@@ -2528,7 +2531,7 @@ if (v8_use_metagen_instance_types) {
                # Proxy for the whole builtin-header directory, which has no
                # GN glob: a toolchain roll rewrites stddef.h along with the
                # rest, and the harvest cannot parse without it.
-               "$_metagen_builtin_headers_dir/stddef.h",
+               "$_metagen_clang_resource_dir/include/stddef.h",
              ] + _metagen_libclang_files
 
     outputs = [ "$_metagen_out_dir/instance-types.h" ]
@@ -2549,6 +2552,11 @@ if (v8_use_metagen_instance_types) {
       rebase_path(".", root_build_dir),
       "--build-dir",
       ".",  # The action runs with cwd=root_build_dir.
+
+      # metagen cannot find this by walking up from the build dir: on
+      # ChromeOS the build dir sits outside the checkout entirely.
+      "--source-root",
+      rebase_path("//", root_build_dir),
       "--out",
       rebase_path(_metagen_out_dir, root_build_dir),
 
@@ -2556,18 +2564,24 @@ if (v8_use_metagen_instance_types) {
       # `gn desc`: its TUs include the headers metagen parses, so its
       # config is the right one. Passed as a string, not a dep, to avoid a
       # cycle with the targets that consume instance-types.h.
+      # Pass the current_toolchain so cross-compiles are handled correctly.
+      # It travels in its own argument because GN would not quote the
+      # parentheses of a qualified label on a Windows command line.
       "--flags-from-target",
       get_label_info(_metagen_flags_target, "label_no_toolchain"),
+      "--flags-toolchain",
+      current_toolchain,
 
       # GN does not allow its generated ninja files as explicit action inputs.
       # Have metagen add the file containing the queried flags to its depfile.
       "--flags-dependency",
       rebase_path(_metagen_flags_target_ninja, root_build_dir),
 
-      # Passed explicitly rather than probed for, so a toolchain layout
-      # change surfaces here instead of as a parse failure.
-      "--clang-builtin-headers-dir",
-      rebase_path(_metagen_builtin_headers_dir, root_build_dir),
+      # We pass a resource dir, not an include dir, so the driver decides where
+      # the builtin headers sit: behind libc++, ahead of the Windows SDK's
+      # copies of stddef.h and the intrinsics. See tools/metagen/metagen.py.
+      "--clang-resource-dir",
+      rebase_path(_metagen_clang_resource_dir, root_build_dir),
     ]
 
     if (v8_metagen_libclang_so != "") {
@@ -2594,13 +2608,15 @@ if (v8_use_metagen_instance_types) {
     }
 
     if (is_win) {
-      # The SDK/UCRT include dirs reach the real compile through the
-      # toolchain's INCLUDE env var, not cflags, so gn desc cannot report
-      # them. Point metagen at that block to re-export INCLUDE.
-      args += [
-        "--toolchain-env",
-        "environment.$current_cpu",
-      ]
+      # The SDK/UCRT include dirs never show up in `gn desc`: the toolchain
+      # interpolates them into its tool command template instead of into
+      # cflags. Pass the build's own resolved flags, the way
+      # build/modules/BUILD.gn does, so an SDK roll reruns the harvest.
+      # `--extra-flag=` attaches the value because the flags start with a
+      # dash (-imsvc<dir>) and argparse would take them for options.
+      foreach(flag, current_win_toolchain_data.include_flags_imsvc_list) {
+        args += [ "--extra-flag=$flag" ]
+      }
     }
   }
 }
@@ -2812,6 +2828,17 @@ group("v8_abseil") {
   visibility = [ "./*" ]
 }
 
+group("v8_simdutf") {
+  public_deps = [ "//third_party/simdutf" ]
+  public_configs = [ ":simdutf_include_config" ]
+
+  visibility = [ "./*" ]
+}
+
+config("simdutf_include_config") {
+  include_dirs = [ "//third_party/simdutf" ]
+}
+
 group("zoslib") {
   if (current_os == "zos") {
     deps = [ "//third_party/zoslib" ]
@@ -2969,6 +2996,7 @@ template("run_mksnapshot") {
   } else {
     suffix = "_$name"
   }
+
   action("run_mksnapshot_" + name) {
     deps = [ ":mksnapshot($v8_snapshot_toolchain)" ]
     if (v8_verify_deterministic_mksnapshot) {
@@ -3253,6 +3281,7 @@ if (v8_verify_builtins_compatibility) {
   # This specifies a separate mksnapshot target for each of:
   # x86, x64, arm, arm64.
   hashes = "builtins_hashes_$v8_current_cpu"
+
   run_mksnapshot("dump_$v8_current_cpu") {
     args = [
       "--dump-builtins-hashes-to-file",
@@ -3273,6 +3302,7 @@ if (v8_verify_builtins_compatibility) {
     profile_toolchain = "//build/toolchain/linux:clang_${profile_arch}"
     target_toolchain =
         "//build/toolchain/linux:clang_${profile_arch}_v8_${target_arch}"
+
     action("compare_builtins_$target_name") {
       deps = [
         ":run_mksnapshot_dump_${profile_arch}($profile_toolchain)",
@@ -5231,8 +5261,6 @@ v8_header_set("v8_internal_headers") {
 
   if (v8_enable_wasm_simd256_revec) {
     sources += [
-      "src/compiler/linear-scheduler.h",
-      "src/compiler/revectorizer.h",
       "src/compiler/turboshaft/wasm-revec-phase.h",
       "src/compiler/turboshaft/wasm-revec-reducer.h",
     ]
@@ -5668,6 +5696,7 @@ v8_header_set("v8_internal_headers") {
     ":v8_headers",
     ":v8_maybe_icu",
     ":v8_shared_internal_headers",
+    ":v8_simdutf",
     "//third_party/fp16",
   ]
 
@@ -5683,7 +5712,6 @@ v8_header_set("v8_internal_headers") {
     ":v8_heap_base_headers",
     ":v8_libbase",
     ":v8_maybe_temporal",
-    "//third_party/simdutf",
   ]
   if (v8_enable_experimental_tq_to_tsa) {
     deps += [ ":run_torque_to_tsa" ]
@@ -5989,8 +6017,6 @@ if (v8_enable_webassembly) {
 
 if (v8_enable_wasm_simd256_revec) {
   v8_compiler_sources += [
-    "src/compiler/linear-scheduler.cc",
-    "src/compiler/revectorizer.cc",
     "src/compiler/turboshaft/wasm-revec-phase.cc",
     "src/compiler/turboshaft/wasm-revec-reducer.cc",
   ]
@@ -7151,7 +7177,7 @@ v8_cluster_source_set("v8_base_without_compiler") {
     ":v8_headers",
     ":v8_internal_headers",
     ":v8_maybe_icu",
-    "//third_party/simdutf",
+    ":v8_simdutf",
   ]
   if (v8_enable_experimental_tq_to_tsa) {
     public_deps += [ ":run_torque_to_tsa" ]
@@ -8132,6 +8158,7 @@ if (v8_check_header_includes) {
   # This file will be generated by tools/generate-header-include-checks.py
   # if the "check_v8_header_includes" gclient variable is set.
   import("check-header-includes/sources.gni")
+
   v8_source_set("check_headers") {
     configs = [ ":internal_config" ]
     sources = check_header_includes_sources
@@ -8171,6 +8198,7 @@ if (v8_monolithic) {
   # Using external startup data would produce separate files.
   assert(!v8_use_external_startup_data,
          "Set `v8_use_external_startup_data = false` for v8_monolithic.")
+
   v8_static_library("v8_monolith") {
     deps = [
       ":v8",
@@ -8774,9 +8802,9 @@ v8_executable("d8") {
     ":v8",
     ":v8_libbase",
     ":v8_libplatform",
+    ":v8_simdutf",
     ":v8_tracing",
     "//build/win:default_exe_manifest",
-    "//third_party/simdutf",
   ]
 
   if (is_posix || is_fuchsia) {
@@ -9078,6 +9106,7 @@ if (v8_enable_webassembly) {
 
   template("v8_wasm_fuzzer") {
     forward_variables_from(invoker, "*")
+
     v8_fuzzer(target_name) {
       deps = [ ":wasm_test_common" ]
     }

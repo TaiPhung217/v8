@@ -154,6 +154,29 @@ TEST_F(GeneratedCodeValidatorTest, ValidateCageBaseRegInitWithoutRootRegFails) {
       "Cage base register initialization uses invalid root register");
 }
 
+TEST_F(GeneratedCodeValidatorTest, ValidateOverwritingCageBaseRegFails) {
+  static_assert(kRootRegister != no_reg);
+  Isolate* i_isolate = this->i_isolate();
+  auto buffer = AllocateAssemblerBuffer();
+  MacroAssembler masm(i_isolate, CodeObjectRequired{false},
+                      buffer->CreateView());
+
+#if V8_TARGET_ARCH_X64
+  __ movq(kRootRegister, kCArgRegs[0]);
+#elif V8_TARGET_ARCH_ARM64
+  __ Mov(kRootRegister, x0);
+#else
+#error "Unsupported architecture for GeneratedCodeValidatorTest"
+#endif
+  __ LoadRootRelative(kPtrComprCageBaseRegister,
+                      IsolateData::cage_base_offset());
+  __ LoadRootRelative(kPtrComprCageBaseRegister,
+                      IsolateData::cage_base_offset());
+
+  CheckValidationFails(i_isolate, masm,
+                       "Instruction overwrites a valid cage base register");
+}
+
 TEST_F(GeneratedCodeValidatorTest, ValidateDecompressionPasses) {
   static_assert(kPtrComprCageBaseRegister != no_reg);
   Isolate* i_isolate = this->i_isolate();
@@ -207,7 +230,59 @@ TEST_F(GeneratedCodeValidatorTest, ValidateRootRegisterPartialInitFails) {
                        "Root register initialization interrupted");
 }
 
+TEST_F(GeneratedCodeValidatorTest, ValidateSystemRegisterWrites) {
+  Isolate* i_isolate = this->i_isolate();
+
+  auto buffer = AllocateAssemblerBuffer();
+  MacroAssembler masm(i_isolate, CodeObjectRequired{false},
+                      buffer->CreateView());
+
+  // Writing to system register should fail validation.
+  __ Msr(NZCV, x0);
+  __ ret();
+
+  CheckValidationFails(i_isolate, masm,
+                       "Instruction writes to prohibited system registers");
+}
+
 #endif  // V8_TARGET_ARCH_ARM64
+
+#if V8_TARGET_ARCH_X64
+
+TEST_F(GeneratedCodeValidatorTest, ValidateSegmentRegisterFails) {
+  Isolate* i_isolate = this->i_isolate();
+
+  // Instruction with segment override prefix.
+  {
+    auto buffer = AllocateAssemblerBuffer();
+    MacroAssembler masm(i_isolate, CodeObjectRequired{false},
+                        buffer->CreateView());
+    // mov rax, [fs:rax]
+    __ db(0x64);
+    __ db(0x48);
+    __ db(0x8B);
+    __ db(0x00);
+    __ ret(0);
+
+    CheckValidationFails(i_isolate, masm,
+                         "Instruction uses a segment register");
+  }
+  // Instruction with segment register operand.
+  {
+    auto buffer = AllocateAssemblerBuffer();
+    MacroAssembler masm(i_isolate, CodeObjectRequired{false},
+                        buffer->CreateView());
+    // mov fs, ax
+    __ db(0x8E);
+    __ db(0xE0);
+    __ ret(0);
+
+    CheckValidationFails(i_isolate, masm,
+                         "Instruction uses a segment register at operand 0");
+  }
+}
+
+#endif  // V8_TARGET_ARCH_X64
 
 #undef __
 

@@ -181,7 +181,10 @@ v8_flag(name = "v8_enable_experimental_tq_to_tsa")
 # Mirrors the GN arg of the same name: selects which instance-type
 # generator's output V8 compiles in, metagen or Torque's emission. When
 # off, the metagen action is not part of the build graph.
-v8_flag(name = "v8_use_metagen_instance_types")
+v8_flag(
+    name = "v8_use_metagen_instance_types",
+    default = False,
+)
 
 v8_flag(
     name = "v8_use_host_cpu_arm_features",
@@ -4573,9 +4576,11 @@ py_binary(
         "tools/metagen/metagen.py",
     ],
     # tools/metagen/ is a Python package, so the scripts import each
-    # other as `from metagen import ...`. That needs the package's
-    # parent -- tools/ -- on sys.path, not the package dir itself.
-    imports = ["tools"],
+    # other as `from metagen import ...`, which needs the package's
+    # parent -- tools/ -- on sys.path rather than the package dir
+    # itself. metagen.py arranges that itself when run as a script,
+    # rather than through the `imports` attribute, which not every
+    # py_binary rule this file is built with supports.
     main = "tools/metagen/metagen.py",
 )
 
@@ -4606,6 +4611,7 @@ metagen_instance_types(
         ":define_flags",
         ":v8_libbase",
         ":lib_fp16",
+        ":simdutf",
         "@abseil-cpp//absl/container:btree",
         "@abseil-cpp//absl/container:flat_hash_map",
         "@abseil-cpp//absl/container:flat_hash_set",
@@ -4858,6 +4864,7 @@ cc_library(
     name = "simdutf",
     srcs = ["third_party/simdutf/simdutf.cpp"],
     hdrs = ["third_party/simdutf/simdutf.h"],
+    strip_include_prefix = "third_party/simdutf",
     copts = select({
         "@v8//bazel/config:is_clang": ["-std=c++20"],
         "@v8//bazel/config:is_gcc": ["-std=gnu++2a"],

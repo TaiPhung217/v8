@@ -18,7 +18,19 @@ namespace internal {
 
 class DeclarationScope;
 class Isolate;
+class Script;
 class String;
+
+// Structure holding deserialized variable information for debugger inspection.
+struct DebugVariableInfo {
+  Tagged<String> name;
+  VariableLocation location;
+  int index;
+  VariableMode mode;
+  int initializer_position;
+  bool is_synthetic;
+  bool is_receiver;
+};
 
 // Stack-allocated cursor for navigating and querying serialized scope trees
 // stored in DebugScriptScopeInfo.
@@ -77,6 +89,10 @@ class V8_EXPORT_PRIVATE DebugScriptScope {
   std::pair<VariableAllocationInfo, int> function_variable_info() const;
   Tagged<String> function_variable_name() const;
 
+  // Local Variables Info
+  int variable_count() const;
+  DebugVariableInfo variable(int index) const;
+
  private:
   DebugScriptScope(DirectHandle<DebugScriptScopeInfo> info, int scope_index,
                    uint32_t offset)
@@ -84,6 +100,7 @@ class V8_EXPORT_PRIVATE DebugScriptScope {
 
   const uint8_t* payload() const;
   const uint8_t* function_variable_payload() const;
+  const uint8_t* variables_payload() const;
   uint16_t flags() const;
   int parent_index() const;
 
@@ -93,6 +110,7 @@ class V8_EXPORT_PRIVATE DebugScriptScope {
   size_t receiver_info_offset() const;
   size_t arguments_info_offset() const;
   size_t function_variable_offset() const;
+  size_t variables_offset() const;
   size_t record_size() const;
 
   friend class DebugScriptScopeInfo;
@@ -106,6 +124,15 @@ class V8_EXPORT_PRIVATE DebugScriptScope {
 // into a DebugScriptScopeInfo.
 V8_EXPORT_PRIVATE Handle<DebugScriptScopeInfo> SerializeDebugScriptScopeInfo(
     Isolate* isolate, DeclarationScope* script_scope);
+
+// Ensures that `script` has an associated DebugScriptScopeInfo. If not yet
+// created, parses the script once eagerly, builds the scope info, and
+// caches it in the Debug ephemeron side table.
+//
+// All necessary scoping information (caller ScopeInfo for eval scripts,
+// wrapped arguments for wrapped scripts) is retained on the Script itself.
+V8_EXPORT_PRIVATE Handle<DebugScriptScopeInfo> EnsureDebugScriptScopeInfo(
+    Isolate* isolate, DirectHandle<Script> script);
 
 }  // namespace internal
 }  // namespace v8

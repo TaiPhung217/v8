@@ -782,9 +782,12 @@ void HeapObjectsMap::AddMergedNativeEntry(NativeObject addr,
                           ComputeAddressHash(canonical_addr));
   auto result = merged_native_entries_map_.insert(
       {addr, reinterpret_cast<size_t>(entry->value)});
-  if (!result.second) {
-    result.first->second = reinterpret_cast<size_t>(entry->value);
-  }
+  DCHECK(result.second);
+  USE(result);
+}
+
+void HeapObjectsMap::ClearMergedNativeEntries() {
+  merged_native_entries_map_.clear();
 }
 
 void HeapObjectsMap::StopHeapObjectsTracking() { time_intervals_.clear(); }
@@ -2088,10 +2091,10 @@ void V8HeapExplorer::ExtractScriptReferences(HeapEntry* entry,
              static_cast<int>(script->type()));
   AddStringEdge(entry, HeapGraphEdge::kInternal, "script_type_name",
                 ToString(script->type()));
-  AddIntEdge(entry, HeapGraphEdge::kInternal, "compilation_type",
-             static_cast<int>(script->compilation_type()));
-  AddStringEdge(entry, HeapGraphEdge::kInternal, "compilation_type_name",
-                ToString(script->compilation_type()));
+  AddIntEdge(entry, HeapGraphEdge::kInternal, "compilation_kind",
+             static_cast<int>(script->compilation_kind()));
+  AddStringEdge(entry, HeapGraphEdge::kInternal, "compilation_kind_name",
+                ToString(script->compilation_kind()));
   AddIntEdge(entry, HeapGraphEdge::kInternal, "compilation_state",
              static_cast<int>(script->compilation_state()));
   AddStringEdge(entry, HeapGraphEdge::kInternal, "compilation_state_name",
@@ -3574,6 +3577,11 @@ bool NativeObjectsExplorer::IterateAndExtractReferences(
   generator_ = generator;
   DisallowGarbageCollection no_gc;
   HandleScope scope(isolate_);
+
+  // Native objects can be replaced while their JS wrapper survives.
+  // Rebuild these associations each snapshot instead of retaining
+  // stale native addresses for live wrapper entries.
+  heap_object_map_->ClearMergedNativeEntries();
 
   if (isolate_->heap()->cpp_heap()) {
     CppGraphBuilder::Run(

@@ -149,7 +149,7 @@ vars = {
   # Three lines of non-changing comments so that
   # the commit queue can handle CLs rolling agents-public
   # and whatever else without interference from each other.
-  'agents_public_revision': '73470db4a7810560ec92e8aa27ff3c6a8a36bea5',
+  'agents_public_revision': '4e0a8bacdfcc6b6303540aa466b05a508f349486',
 }
 
 deps = {
@@ -218,7 +218,7 @@ deps = {
   'test/mozilla/data':
     Var('chromium_url') + '/v8/deps/third_party/mozilla-tests.git' + '@' + 'f6c578a10ea707b1a8ab0b88943fe5115ce2b9be',
   'test/test262/data':
-    Var('chromium_url') + '/external/github.com/tc39/test262.git' + '@' + '14e8c908e54ae2e770e473bcacf536f8cb654929',
+    Var('chromium_url') + '/external/github.com/tc39/test262.git' + '@' + '419d3e0a2273ba01a3bfcbec423f2801425b8e93',
   'third_party/android_platform': {
     'url': Var('chromium_url') + '/chromium/src/third_party/android_platform.git' + '@' + 'e3919359f2387399042d31401817db4a02d756ec',
     'condition': 'checkout_android',
@@ -310,9 +310,9 @@ deps = {
     'url': Var('chromium_url') + '/external/github.com/google/benchmark.git' + '@' + '8abf1e701fbd88c8170f48fe0558247e2e5f8e7d',
   },
   'third_party/fuzztest':
-    Var('chromium_url') + '/chromium/src/third_party/fuzztest.git' + '@' + '7dc967eb047689dccd3de78caa65f3a797de268a',
+    Var('chromium_url') + '/chromium/src/third_party/fuzztest.git' + '@' + 'f0f143db954fb311d4e7ba39972d2dab9ba47e2a',
   'third_party/fuzztest/src':
-    Var('chromium_url') + '/external/github.com/google/fuzztest.git' + '@' + '5ce9c5d64e9dce2a12665c3f8cdbedfe64aa384a',
+    Var('chromium_url') + '/external/github.com/google/fuzztest.git' + '@' + '846bda6f291e26b7f8fb33c8de23796129bffd12',
   'third_party/googletest/src':
     Var('chromium_url') + '/external/github.com/google/googletest.git' + '@' + '4fe3307fb2d9f86d19777c7eb0e4809e9694dde7',
   'third_party/highway/src':
@@ -687,10 +687,10 @@ include_rules = [
   '+third_party/fp16/src/include',
   '+third_party/fuzztest',
   '+third_party/ittapi/include',
-  '+third_party/simdutf',
   '+third_party/v8/codegen',
   '+third_party/vtune',
   '+hwy/highway.h',
+  '+simdutf.h',
   # Abseil features are allow-listed. Please use your best judgement when adding
   # to this set -- if in doubt, email v8-dev@. For general guidance, refer to
   # the Chromium guidelines (though note that some requirements in V8 may be

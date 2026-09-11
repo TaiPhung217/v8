@@ -100,6 +100,11 @@
       TriggerImplication(v8_flags.flag < min_value, #flag "<" #min_value, \
                          &v8_flags.flag, #flag, min_value, false);
 
+#define DEFINE_MAX_VALUE_IMPLICATION(flag, max_value)                     \
+  changed |=                                                              \
+      TriggerImplication(v8_flags.flag > max_value, #max_value "<" #flag, \
+                         &v8_flags.flag, #flag, max_value, false);
+
 #define DEFINE_DISABLE_FLAG_IMPLICATION(whenflag, thenflag) \
   if (whenflag && thenflag) {                               \
     PrintF(stderr, "Warning: disabling flag --" #thenflag   \
@@ -163,6 +168,10 @@
 
 #ifndef DEFINE_MIN_VALUE_IMPLICATION
 #define DEFINE_MIN_VALUE_IMPLICATION(flag, min_value)
+#endif
+
+#ifndef DEFINE_MAX_VALUE_IMPLICATION
+#define DEFINE_MAX_VALUE_IMPLICATION(flag, max_value)
 #endif
 
 #ifndef DEFINE_DISABLE_FLAG_IMPLICATION
@@ -1634,14 +1643,6 @@ DEFINE_BOOL(fast_api_allow_float_in_sim, false,
 // for other tests, which would just lead to errors or crashes.
 DEFINE_NEG_IMPLICATION(fuzzing, fast_api_allow_float_in_sim)
 
-#ifdef V8_USE_ZLIB
-DEFINE_BOOL(turbo_compress_frame_translations, false,
-            "compress deoptimization frame translations (experimental)")
-#else
-DEFINE_BOOL_READONLY(
-    turbo_compress_frame_translations, false,
-    "compress deoptimization frame translations (experimental)")
-#endif  // V8_USE_ZLIB
 DEFINE_BOOL(
     turbo_inline_js_wasm_calls, true,
     "inline JS->Wasm calls (specifically: inline JS-to-Wasm wrappers and then "
@@ -1728,7 +1729,7 @@ DEFINE_IMPLICATION(future_wasm_simd_opt, wasm_simd_opt)
 DEFINE_IMPLICATION(wasm_deinterleave_loads, wasm_simd_opt)
 #endif  // V8_TARGET_ARCH_ARM64
 
-DEFINE_BOOL(turbolev, false,
+DEFINE_BOOL(turbolev, true,
             "use Turbolev (≈ Maglev + Turboshaft combined) as the 4th tier "
             "compiler instead of Turbofan")
 
@@ -1844,6 +1845,7 @@ DEFINE_BOOL(profile_guided_optimization_for_empty_feedback_vector, true,
             "profile guided optimization for empty feedback vector")
 DEFINE_INT(invocation_count_for_early_optimization, 30,
            "invocation count threshold for early optimization")
+DEFINE_MAX_VALUE_IMPLICATION(invocation_count_for_early_optimization, 254)
 DEFINE_INT(invocation_count_for_maglev_with_delay, 600,
            "invocation count for maglev for functions which according to "
            "profile_guided_optimization are likely to deoptimize before "
@@ -3099,13 +3101,13 @@ DEFINE_INT(switch_table_min_cases, 6,
 DEFINE_REQUIREMENT(v8_flags.switch_table_min_cases > 0)
 // Note that enabling this stress mode might result in a failure to compile
 // even a top-level code.
-DEFINE_INT(stress_lazy_compilation, 0,
-           "stress lazy compilation by simulating stack overflow during "
-           "unoptimized bytecode generation with 1/n-th probability, "
-           "do nothing on 0")
+DEFINE_UINT(stress_lazy_compilation, 0,
+            "stress lazy compilation by simulating stack overflow during "
+            "unoptimized bytecode generation with 1/n-th probability, "
+            "do nothing on 0")
 // Correctness fuzzing treats stack overflows as crashes.
 DEFINE_VALUE_IMPLICATION(correctness_fuzzer_suppressions,
-                         stress_lazy_compilation, 0)
+                         stress_lazy_compilation, 0u)
 
 // codegen-ia32.cc / codegen-arm.cc
 DEFINE_BOOL(trace, false, "trace javascript function calls")
@@ -4539,6 +4541,7 @@ DEFINE_IMPLICATION(gdbjit, log)
 #undef DEFINE_NEG_VALUE_VALUE_IMPLICATION
 #undef DEFINE_VALUE_IMPLICATION
 #undef DEFINE_MIN_VALUE_IMPLICATION
+#undef DEFINE_MAX_VALUE_IMPLICATION
 #undef DEFINE_DISABLE_FLAG_IMPLICATION
 #undef DEFINE_WEAK_VALUE_IMPLICATION
 #undef DEFINE_GENERIC_IMPLICATION

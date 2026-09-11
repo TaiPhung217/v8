@@ -1019,6 +1019,7 @@ void FeedbackVector::FeedbackVectorVerify(Isolate* isolate) {
   CHECK(IsFeedbackCell(parent_feedback_cell()));
   // Variable-length maybe-weak tail.
   const uint32_t len = length().value();
+  CHECK_LE(len, static_cast<uint32_t>(kMaxLength));
   for (uint32_t i = 0; i < len; ++i) {
     Tagged<MaybeObject> value = raw_feedback_slots()[i].Relaxed_Load();
     Object::VerifyMaybeObjectPointer(isolate, value);
@@ -1705,7 +1706,8 @@ void JSFunction::JSFunctionVerify(Isolate* isolate) {
     CHECK(IsAccessorInfo(*it.GetAccessors()));
   } else {
     CHECK(!it.IsFound() || it.state() != LookupIterator::ACCESSOR ||
-          !IsAccessorInfo(*it.GetAccessors()));
+          !IsAccessorInfo(*it.GetAccessors()) ||
+          *it.GetAccessors() == *isolate->factory()->lazy_closure_accessor());
   }
 
   CHECK_IMPLIES(shared()->HasBuiltinId(),

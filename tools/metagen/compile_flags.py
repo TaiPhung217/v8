@@ -24,9 +24,10 @@ instrumentation, warnings-as-errors) or that libclang rejects (input
 file, response files).
 
 The clang builtin headers (stddef.h etc.) are not handled here: the
-build system passes their directory explicitly via metagen.py's
---clang-builtin-headers-dir. Probing for them would read paths the
-build never declared, which a sandboxed action cannot do.
+build system points metagen.py at the toolchain that holds them, via
+--clang-resource-dir or --clang-builtin-headers-dir. Probing for them
+would read paths the build never declared, which a sandboxed action
+cannot do.
 """
 
 from __future__ import annotations
@@ -77,14 +78,9 @@ _DROP_TWO = frozenset({
 # a file it would not read (see also -fno-sanitize-ignorelist in
 # metagen.py, which suppresses the implicit ones).
 #
-# The -fmodule*/-fimplicit-module* family goes too. A build with
-# use_clang_modules compiles against prebuilt .pcm files and passes
-# -fno-implicit-modules to forbid building them on the fly; those .pcms
-# are real build artifacts the harvest neither has nor can produce, so
-# the parse dies on the first modular header ("module 'X' is needed but
-# has not been provided"). Dropping the whole family (not just
-# -fno-implicit-modules) keeps the harvest textual: leaving -fmodules on
-# would let libclang build implicit modules mid-harvest instead.
+# Also strip modules flags. Modular headers need prebuilt .pcm files that we
+# can't produce, so the parse has to stay textual. That includes
+# -fbuiltin-module-map, which modularizes whatever -resource-dir= points at.
 _DROP_PREFIX = (
     "-Werror",  # bare and -Werror=<warning>
     "-fcrash-diagnostics-dir=",
@@ -94,7 +90,9 @@ _DROP_PREFIX = (
     "-fsanitize-system-ignorelist=",
     "-fsanitize-blacklist=",  # the pre-LLVM-13 spelling
     "-fmodule",  # -fmodules, -fmodule-file=, -fmodule-map-file=, ...
+    "-fimplicit-module",  # -fimplicit-modules, ...-module-maps
     "-fno-implicit-module",  # -fno-implicit-modules, ...-module-maps
+    "-fbuiltin-module-map",
 )
 
 _CXX_INPUT_EXTS = (".cc", ".cpp", ".cxx", ".cppm", ".c++", ".C")
@@ -118,21 +116,6 @@ def _find_gn(source_root: str) -> str | None:
     if os.path.isfile(p) and os.access(p, os.X_OK):
       return p
   return shutil.which("gn")
-
-
-def _gn_source_root(build_dir: str) -> str | None:
-  """Return GN's source root: the nearest ancestor of build_dir holding
-  a `.gn` marker (GN's canonical root definition). This differs between
-  layouts -- the V8 checkout standalone, the Chromium `src/` root under
-  Chromium -- and is what `//` in gn desc output resolves against."""
-  d = os.path.abspath(build_dir)
-  while True:
-    if os.path.isfile(os.path.join(d, ".gn")):
-      return d
-    parent = os.path.dirname(d)
-    if parent == d:
-      return None
-    d = parent
 
 
 def _is_clang_cl(arg0: str) -> bool:
@@ -175,8 +158,12 @@ def _filter(args: list[str], input_path: str) -> list[str]:
 
 
 def get_compile_args_from_gn_desc(
-    build_dir: str, target_label: str) -> tuple[list[str], str, bool]:
+    build_dir: str, target_label: str,
+    source_root: str) -> tuple[list[str], str, bool]:
   """GN path: reconstruct one target's compile flags via `gn desc`.
+
+  `source_root` is the directory holding the build's `.gn` marker. The
+  caller passes it in because the build dir need not sit under it.
 
   Returns (flags, cwd, cl_mode):
     flags    libclang args. Path-bearing flags (-I, -isystem, ...) are
@@ -187,12 +174,9 @@ def get_compile_args_from_gn_desc(
              `--driver-mode=cl` when this is set.
 
   cflags/cflags_cc are passed through verbatim; include_dirs are
-  source-absolute `//...` and rebased to absolute here.
+  source-absolute `//...` and rebased against `source_root` here.
   """
-  source_root = _gn_source_root(build_dir)
-  if source_root is None:
-    raise RuntimeError(
-        f"[metagen] no .gn source-root marker found above {build_dir}.")
+  source_root = os.path.abspath(source_root)
   gn = _find_gn(source_root)
   if not gn:
     raise RuntimeError(
@@ -249,35 +233,6 @@ def get_compile_args_from_gn_desc(
   # path, so the input-path arg to _filter is unused.
   filtered = _filter(flags, "")
   return filtered, os.path.abspath(build_dir), cl_mode
-
-
-def load_toolchain_include(build_dir: str, env_file: str) -> str | None:
-  """Return the INCLUDE search path from a toolchain environment block.
-
-  On Windows the MSVC/UCRT SDK include dirs are not compile flags -- the
-  toolchain injects them through the INCLUDE env var (see Chromium's
-  build/toolchain/win/setup_toolchain.py), which `gn desc` does not
-  report and a plain GN action() does not inherit. GN writes the block to
-  `environment.<arch>` in the build dir; read INCLUDE back so the caller
-  can re-export it and clang-cl (libclang in cl-mode) resolves the SDK
-  headers exactly as the real compile does. These are the build's own
-  resolved paths, not hand-authored flags.
-
-  Returns None if the file is absent (e.g. non-Windows), leaving the
-  environment untouched.
-  """
-  path = env_file if os.path.isabs(env_file) else os.path.join(
-      build_dir, env_file)
-  if not os.path.isfile(path):
-    return None
-  with open(path, "rb") as f:
-    block = f.read().decode("utf-8", errors="replace")
-  # The block is a run of NUL-separated `KEY=VALUE` entries.
-  for entry in block.split("\0"):
-    key, sep, value = entry.partition("=")
-    if sep and key.upper() == "INCLUDE":
-      return value
-  return None
 
 
 def get_compile_args_from_file(path: str) -> tuple[list[str], str, bool]:

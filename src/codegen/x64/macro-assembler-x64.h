@@ -229,6 +229,8 @@ class V8_EXPORT_PRIVATE MacroAssembler
   void Cmp(Register dst, Tagged<Smi> src);
   void Cmp(Operand dst, Tagged<Smi> src);
   void Cmp(Register dst, int32_t src);
+  void Cmpq(Register dst, int32_t src);
+  void Cmpb(Register dst, int32_t src);
 
   void CmpTagged(const Register& src1, const Register& src2) {
     cmp_tagged(src1, src2);
@@ -247,6 +249,10 @@ class V8_EXPORT_PRIVATE MacroAssembler
   void I8x16Popcnt(XMMRegister dst, XMMRegister src, Register scratch,
                    XMMRegister tmp1 = XMMRegister::no_reg(),
                    XMMRegister tmp2 = XMMRegister::no_reg());
+  void S128Not(XMMRegister dst, XMMRegister src, XMMRegister scratch);
+  // AVX10 and SSE paths require dst == mask.
+  void S128Select(XMMRegister dst, XMMRegister mask, XMMRegister src1,
+                  XMMRegister src2, XMMRegister scratch);
 
   // SIMD256
   void I64x4Mul(YMMRegister dst, YMMRegister lhs, YMMRegister rhs,
@@ -293,6 +299,7 @@ class V8_EXPORT_PRIVATE MacroAssembler
                  XMMRegister src3, YMMRegister tmp, YMMRegister tmp2);
 
   void S256Not(YMMRegister dst, YMMRegister src, YMMRegister scratch);
+  // AVX10 path requires dst == mask.
   void S256Select(YMMRegister dst, YMMRegister mask, YMMRegister src1,
                   YMMRegister src2, YMMRegister scratch);
 

@@ -386,11 +386,20 @@ V8_OBJECT class FeedbackVector : public HeapObject {
 
   // Optimized OSR'd code is cached in JumpLoop feedback vector slots. The
   // slots either contain a Code object or the ClearedValue.
+  //
+  // These all run on the main thread only, which is the sole writer of feedback
+  // slots, so reading a slot needs no synchronization. Writing one does:
+  // background compilation threads read JumpLoop slots as a pair under
+  // feedback_vector_access (NexusConfig::GetFeedbackPair), so every write has
+  // to hold that mutex. Note that GetOptimizedOsrCode writes too: it clears the
+  // slot if the cached code was deoptimized.
   inline std::optional<Tagged<Code>> GetOptimizedOsrCode(
       Isolate* isolate, Handle<BytecodeArray> bytecode_array,
       FeedbackSlot slot);
   void SetOptimizedOsrCode(Isolate* isolate, FeedbackSlot slot,
                            Tagged<Code> code);
+  // Acquires feedback_vector_access whenever it has to clear a slot, so it must
+  // not be called while holding it.
   inline void RecomputeOptimizedOsrCodeFlags(
       Isolate* isolate, Handle<BytecodeArray> bytecode_array);
 
@@ -513,6 +522,7 @@ V8_OBJECT class FeedbackVector : public HeapObject {
 
   static const int kHeaderSize;
   static const int kRawFeedbackSlotsOffset;
+  static const int kMaxLength;
 
   static constexpr int SizeFor(int length);
   static constexpr int OffsetOfElementAt(int index);
@@ -565,8 +575,12 @@ inline constexpr int FeedbackVector::kHeaderSize =
     OFFSET_OF_DATA_START(FeedbackVector);
 inline constexpr int FeedbackVector::kRawFeedbackSlotsOffset =
     OFFSET_OF_DATA_START(FeedbackVector);
+inline constexpr int FeedbackVector::kMaxLength =
+    (kMaxInt - kHeaderSize) / kTaggedSize;
 
 constexpr int FeedbackVector::SizeFor(int length) {
+  CHECK_GE(length, 0);
+  CHECK_LE(length, kMaxLength);
   return OFFSET_OF_DATA_START(FeedbackVector) + length * kTaggedSize;
 }
 constexpr int FeedbackVector::OffsetOfElementAt(int index) {

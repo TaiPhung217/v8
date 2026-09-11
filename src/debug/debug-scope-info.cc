@@ -5,19 +5,24 @@
 #include "src/debug/debug-scope-info.h"
 
 #include <cstddef>
+#include <iterator>
 #include <type_traits>
 
 #include "src/ast/ast-value-factory.h"
 #include "src/ast/scopes.h"
 #include "src/base/bit-field.h"
+#include "src/base/numerics/safe_conversions.h"
 #include "src/base/vector.h"
 #include "src/common/globals.h"
+#include "src/debug/debug.h"
 #include "src/execution/isolate-inl.h"
 #include "src/handles/handles-inl.h"
 #include "src/heap/factory.h"
 #include "src/objects/debug-objects-inl.h"
 #include "src/objects/fixed-array-inl.h"
 #include "src/objects/string-inl.h"
+#include "src/parsing/parse-info.h"
+#include "src/parsing/parsing.h"
 #include "src/zone/zone-containers.h"
 
 namespace v8 {
@@ -71,6 +76,17 @@ static_assert(std::is_standard_layout_v<ScopeRecord>);
 // Ensure ScopeRecord has no padding. Update when adding new fields.
 static_assert(sizeof(ScopeRecord) == 16);
 
+struct DebugVariableEntry {
+  int16_t slot_index;
+  uint16_t location_mode_flags;
+  int32_t initializer_position;
+  int32_t name_index;
+};
+
+static_assert(std::is_trivial_v<DebugVariableEntry>);
+static_assert(std::is_standard_layout_v<DebugVariableEntry>);
+static_assert(sizeof(DebugVariableEntry) == 12);
+
 using ScopeTypeBits = base::BitField<ScopeType, 0, 4, uint16_t>;
 using HasChildrenBit = ScopeTypeBits::Next<bool, 1>;
 using HasSiblingBit = HasChildrenBit::Next<bool, 1>;
@@ -85,6 +101,12 @@ using NeedsContextBit = SloppyEvalCanExtendVarsBit::Next<bool, 1>;
 using HasArgumentsBit = NeedsContextBit::Next<bool, 1>;
 using HasFunctionVarBit = HasArgumentsBit::Next<bool, 1>;
 static_assert(HasFunctionVarBit::kLastUsedBit < 16);
+
+using VariableLocationBits = base::BitField<VariableLocation, 0, 4, uint16_t>;
+using VariableModeBits = VariableLocationBits::Next<VariableMode, 4>;
+using IsSyntheticBit = VariableModeBits::Next<bool, 1>;
+using IsReceiverBit = IsSyntheticBit::Next<bool, 1>;
+static_assert(IsReceiverBit::kLastUsedBit < 16);
 
 // Encodes receiver, arguments, or function variable allocation info into a
 // 16-bit word:
@@ -300,9 +322,13 @@ size_t DebugScriptScope::function_variable_offset() const {
          (HasArgumentsBit::decode(flags()) ? kUInt16Size : 0);
 }
 
-size_t DebugScriptScope::record_size() const {
+size_t DebugScriptScope::variables_offset() const {
   return function_variable_offset() +
          (HasFunctionVarBit::decode(flags()) ? (kUInt16Size + kInt32Size) : 0);
+}
+
+size_t DebugScriptScope::record_size() const {
+  return variables_offset() + variable_count() * sizeof(DebugVariableEntry);
 }
 
 int DebugScriptScope::unique_id_in_script() const {
@@ -345,30 +371,62 @@ Tagged<String> DebugScriptScope::function_variable_name() const {
   return Cast<String>(info_->string_table()->get(name_index));
 }
 
+int DebugScriptScope::variable_count() const {
+  return base::ReadUnalignedValue<ScopeRecord>(payload()).var_count;
+}
+
+const uint8_t* DebugScriptScope::variables_payload() const {
+  return payload() + variables_offset();
+}
+
+DebugVariableInfo DebugScriptScope::variable(int index) const {
+  CHECK_GE(index, 0);
+  CHECK_LT(index, variable_count());
+  const uint8_t* entry_ptr =
+      variables_payload() + index * sizeof(DebugVariableEntry);
+  DebugVariableEntry entry =
+      base::ReadUnalignedValue<DebugVariableEntry>(entry_ptr);
+  Tagged<String> name;
+  if (entry.name_index >= 0) {
+    DCHECK_LT(static_cast<uint32_t>(entry.name_index),
+              info_->string_table()->length().value());
+    name = Cast<String>(info_->string_table()->get(entry.name_index));
+  }
+  return DebugVariableInfo{
+      .name = name,
+      .location = VariableLocationBits::decode(entry.location_mode_flags),
+      .index = entry.slot_index,
+      .mode = VariableModeBits::decode(entry.location_mode_flags),
+      .initializer_position = entry.initializer_position,
+      .is_synthetic = IsSyntheticBit::decode(entry.location_mode_flags),
+      .is_receiver = IsReceiverBit::decode(entry.location_mode_flags),
+  };
+}
+
 Handle<DebugScriptScopeInfo> SerializeDebugScriptScopeInfo(
     Isolate* isolate, DeclarationScope* script_scope) {
   DCHECK_NOT_NULL(script_scope);
-  DCHECK(script_scope->is_script_scope());
+  DCHECK(script_scope->is_toplevel_scope());
 
   Zone* zone = script_scope->zone();
   ZoneVector<const AstRawString*> string_table(zone);
   ZoneAbslFlatHashMap<const AstRawString*, int32_t> string_map(zone);
 
   auto get_or_insert_string = [&](const AstRawString* raw_name) -> int32_t {
-    DCHECK_NOT_NULL(raw_name);
+    if (raw_name == nullptr) return -1;
     auto it = string_map.find(raw_name);
     if (it != string_map.end()) return it->second;
-    int32_t index = static_cast<int32_t>(string_table.size());
+    int32_t index = base::checked_cast<int32_t>(string_table.size());
     string_map.emplace(raw_name, index);
     string_table.push_back(raw_name);
     return index;
   };
 
   std::vector<Scope*> all_scopes;
-  std::unordered_map<Scope*, int> scope_to_index;
+  std::unordered_map<Scope*, int32_t> scope_to_index;
 
   auto collect = [&](auto& self, Scope* scope) -> void {
-    int index = static_cast<int>(all_scopes.size());
+    int32_t index = base::checked_cast<int32_t>(all_scopes.size());
     all_scopes.push_back(scope);
     scope_to_index.emplace(scope, index);
     for (Scope* inner = scope->inner_scope(); inner != nullptr;
@@ -377,12 +435,15 @@ Handle<DebugScriptScopeInfo> SerializeDebugScriptScopeInfo(
     }
   };
   collect(collect, script_scope);
+  DCHECK(!all_scopes.empty());
+  DCHECK(!all_scopes[0]->is_with_scope());
 
-  auto find_scope_index = [&](Scope* s) -> int {
+  auto find_scope_index = [&](Scope* s) -> int32_t {
     if (s == nullptr) return -1;
     auto it = scope_to_index.find(s);
     return it != scope_to_index.end() ? it->second : -1;
   };
+  DCHECK_EQ(find_scope_index(all_scopes[0]->outer_scope()), -1);
 
   // Stage 1: Pre-calculate exact required byte size and scope offsets.
   size_t total_size = kInt32Size + all_scopes.size() * kUInt32Size;
@@ -390,7 +451,7 @@ Handle<DebugScriptScopeInfo> SerializeDebugScriptScopeInfo(
   offsets.reserve(all_scopes.size());
 
   for (size_t i = 0; i < all_scopes.size(); ++i) {
-    offsets.push_back(static_cast<uint32_t>(total_size));
+    offsets.push_back(base::checked_cast<uint32_t>(total_size));
     total_size += sizeof(ScopeRecord);
     if (all_scopes[i]->sibling() != nullptr) {
       total_size += kInt32Size;
@@ -410,15 +471,18 @@ Handle<DebugScriptScopeInfo> SerializeDebugScriptScopeInfo(
         all_scopes[i]->AsDeclarationScope()->function_var() != nullptr) {
       total_size += kUInt16Size + kInt32Size;
     }
+    uint16_t var_count = base::checked_cast<uint16_t>(std::distance(
+        all_scopes[i]->locals()->begin(), all_scopes[i]->locals()->end()));
+    total_size += var_count * sizeof(DebugVariableEntry);
   }
 
   // Stage 2: Allocate a ByteArray and write directly into it with
   // ByteArrayWriter.
   Handle<ByteArray> byte_array = isolate->factory()->NewByteArray(
-      static_cast<int>(total_size), AllocationType::kOld);
+      base::checked_cast<uint32_t>(total_size), AllocationType::kOld);
 
   ByteArrayWriter header_writer(reinterpret_cast<Address>(byte_array->begin()));
-  header_writer.Write<int32_t>(static_cast<int32_t>(all_scopes.size()));
+  header_writer.Write<int32_t>(base::checked_cast<int32_t>(all_scopes.size()));
 
   for (size_t i = 0; i < all_scopes.size(); ++i) {
     header_writer.Write<uint32_t>(offsets[i]);
@@ -429,7 +493,7 @@ Handle<DebugScriptScopeInfo> SerializeDebugScriptScopeInfo(
         reinterpret_cast<Address>(byte_array->begin()) + offsets[i];
     Scope* scope = all_scopes[i];
 
-    int next_sibling = find_scope_index(scope->sibling());
+    int32_t next_sibling = find_scope_index(scope->sibling());
     bool has_sibling = next_sibling != -1;
     bool needs_context = scope->NeedsContext();
     bool has_this_decl = false;
@@ -459,13 +523,19 @@ Handle<DebugScriptScopeInfo> SerializeDebugScriptScopeInfo(
     flags = HasArgumentsBit::update(flags, has_arguments);
     flags = HasFunctionVarBit::update(flags, has_function_var);
 
+    uint16_t var_count = base::checked_cast<uint16_t>(
+        std::distance(scope->locals()->begin(), scope->locals()->end()));
+
+    int32_t parent_scope_index = find_scope_index(scope->outer_scope());
+    DCHECK_EQ(parent_scope_index == -1, i == 0);
+
     ByteArrayWriter writer(record);
     writer.Write<ScopeRecord>(ScopeRecord{
         .start_position = scope->start_position(),
         .end_position = scope->end_position(),
-        .parent_scope_index = find_scope_index(scope->outer_scope()),
+        .parent_scope_index = parent_scope_index,
         .flags = flags,
-        .var_count = 0,
+        .var_count = var_count,
     });
 
     if (has_sibling) {
@@ -479,6 +549,7 @@ Handle<DebugScriptScopeInfo> SerializeDebugScriptScopeInfo(
     }
     if (has_this_decl) {
       Variable* var = scope->AsDeclarationScope()->receiver();
+      DCHECK_NE(var->location(), VariableLocation::LOOKUP);
       VariableAllocationInfo info = var->location() == VariableLocation::CONTEXT
                                         ? VariableAllocationInfo::CONTEXT
                                         : VariableAllocationInfo::STACK;
@@ -486,6 +557,7 @@ Handle<DebugScriptScopeInfo> SerializeDebugScriptScopeInfo(
     }
     if (has_arguments) {
       Variable* var = scope->AsDeclarationScope()->arguments();
+      DCHECK_NE(var->location(), VariableLocation::LOOKUP);
       VariableAllocationInfo info = var->location() == VariableLocation::CONTEXT
                                         ? VariableAllocationInfo::CONTEXT
                                         : VariableAllocationInfo::STACK;
@@ -493,12 +565,48 @@ Handle<DebugScriptScopeInfo> SerializeDebugScriptScopeInfo(
     }
     if (has_function_var) {
       Variable* var = scope->AsDeclarationScope()->function_var();
+      DCHECK_NE(var->location(), VariableLocation::LOOKUP);
       VariableAllocationInfo info = var->location() == VariableLocation::CONTEXT
                                         ? VariableAllocationInfo::CONTEXT
                                         : VariableAllocationInfo::STACK;
       writer.Write<uint16_t>(EncodeAllocInfo(info, var->index()));
       int32_t name_index = get_or_insert_string(var->raw_name());
       writer.Write<int32_t>(name_index);
+    }
+
+    for (Variable* var : *scope->locals()) {
+      DCHECK_EQ(var->scope(), scope);
+      // Variables declared in locals() must be statically allocated (or
+      // unallocated if unused). They must never require dynamic lookup against
+      // an outer context (e.g. VariableLocation::LOOKUP), which would indicate
+      // dependence on outer runtime scopes such as WithScopes.
+      DCHECK_NE(var->location(), VariableLocation::LOOKUP);
+      const AstRawString* raw = var->raw_name();
+      // LINT.IfChange(VariableIsSynthetic)
+      // Keep in sync with ScopeInfo::VariableIsSynthetic() in
+      // src/objects/scope-info.cc.
+      bool is_synthetic =
+          raw != nullptr &&
+          (raw->IsEmpty() || raw->FirstCharacter() == '.' ||
+           raw->IsPrivateName() || raw->IsOneByteEqualTo("this"));
+      // LINT.ThenChange(/src/objects/scope-info.cc:VariableIsSynthetic)
+      // LINT.IfChange(VariableIsReceiver)
+      // Keep in sync with Variable::IsReceiver() in src/ast/variables.h.
+      // Variable::IsReceiver() asserts IsParameter() in debug builds.
+      bool is_receiver = var->IsParameter() && var->IsReceiver();
+      // LINT.ThenChange(/src/ast/variables.h:VariableIsReceiver)
+      uint16_t var_flags = 0;
+      var_flags = VariableLocationBits::update(var_flags, var->location());
+      var_flags = VariableModeBits::update(var_flags, var->mode());
+      var_flags = IsSyntheticBit::update(var_flags, is_synthetic);
+      var_flags = IsReceiverBit::update(var_flags, is_receiver);
+
+      writer.Write<DebugVariableEntry>(DebugVariableEntry{
+          .slot_index = base::checked_cast<int16_t>(var->index()),
+          .location_mode_flags = var_flags,
+          .initializer_position = var->initializer_position(),
+          .name_index = get_or_insert_string(var->raw_name()),
+      });
     }
 
     size_t expected_size =
@@ -510,15 +618,60 @@ Handle<DebugScriptScopeInfo> SerializeDebugScriptScopeInfo(
   if (string_table.empty()) {
     final_string_table = isolate->factory()->empty_fixed_array();
   } else {
-    Handle<FixedArray> table = isolate->factory()->NewFixedArray(
-        static_cast<int>(string_table.size()), AllocationType::kOld);
-    for (int i = 0; i < static_cast<int>(string_table.size()); ++i) {
+    uint32_t string_count = base::checked_cast<uint32_t>(string_table.size());
+    Handle<FixedArray> table =
+        isolate->factory()->NewFixedArray(string_count, AllocationType::kOld);
+    for (uint32_t i = 0; i < string_count; ++i) {
       table->set(i, *string_table[i]->string());
     }
     final_string_table = table;
   }
   return isolate->factory()->NewDebugScriptScopeInfo(byte_array,
                                                      final_string_table);
+}
+
+Handle<DebugScriptScopeInfo> EnsureDebugScriptScopeInfo(
+    Isolate* isolate, DirectHandle<Script> script) {
+  DirectHandle<DebugScriptScopeInfo> cached_info =
+      isolate->debug()->GetScriptScopeInfo(script);
+  if (!cached_info.is_null()) {
+    return handle(*cached_info, isolate);
+  }
+
+  // UnoptimizedCompileFlags::ForScriptCompile automatically initializes flags
+  // from the script object:
+  // - Sets is_toplevel(true) and preserves REPL and module flags.
+  // - Restores outer_language_mode and compilation kind (host, eval, wrapped,
+  //   Function constructor).
+  // - For wrapped scripts, sets function_syntax_kind to kWrapped and is_eval.
+  //
+  // Eager compilation ensures all inner function scopes are parsed rather
+  // than skipped. Marking as reparse prevents spawning background parallel
+  // compile tasks and preserves context allocation flags.
+  UnoptimizedCompileFlags flags =
+      UnoptimizedCompileFlags::ForScriptCompile(isolate, *script)
+          .set_is_eager(true);
+  flags.set_is_reparse(true);
+
+  MaybeDirectHandle<ScopeInfo> maybe_outer_scope;
+  if (script->has_eval_from_scope_info()) {
+    maybe_outer_scope =
+        direct_handle(Cast<ScopeInfo>(script->eval_from_scope_info()), isolate);
+  }
+
+  UnoptimizedCompileState compile_state;
+  ReusableUnoptimizedCompileState reusable_state(isolate);
+  ParseInfo info(isolate, flags, &compile_state, &reusable_state);
+
+  if (!parsing::ParseProgram(&info, script, maybe_outer_scope, isolate,
+                             parsing::ReportStatisticsMode{false})) {
+    return Handle<DebugScriptScopeInfo>::null();
+  }
+
+  Handle<DebugScriptScopeInfo> debug_info =
+      SerializeDebugScriptScopeInfo(isolate, info.literal()->scope());
+  isolate->debug()->SetScriptScopeInfo(script, debug_info);
+  return debug_info;
 }
 
 #ifdef VERIFY_HEAP
@@ -584,6 +737,15 @@ void DebugScriptScopeInfo::DebugScriptScopeInfoVerify(Isolate* isolate) {
       CHECK_LT(static_cast<uint32_t>(name_index),
                string_table()->length().value());
       CHECK(IsString(string_table()->get(name_index)));
+    }
+
+    CHECK_EQ(scope.variable_count(),
+             base::ReadUnalignedValue<ScopeRecord>(scope.payload()).var_count);
+    for (int v = 0; v < scope.variable_count(); ++v) {
+      DebugVariableInfo var = scope.variable(v);
+      if (!var.name.is_null()) {
+        CHECK(IsString(var.name));
+      }
     }
 
     if (i == 0) {
