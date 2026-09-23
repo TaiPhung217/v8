@@ -684,11 +684,10 @@ MaybeDirectHandle<JSObject> JSDateTimeFormat::ResolvedOptions(
 
   DirectHandle<String> locale(date_time_format->locale(), isolate);
   DCHECK(!date_time_format->icu_locale().is_null());
-  CppGCManaged<icu::Locale>::Ptr icu_locale =
-      date_time_format->icu_locale()->ptr();
+  Managed<icu::Locale>::Ptr icu_locale = date_time_format->icu_locale()->ptr();
   DCHECK_NOT_NULL(icu_locale);
 
-  CppGCManaged<icu::SimpleDateFormat>::Ptr icu_simple_date_format =
+  Managed<icu::SimpleDateFormat>::Ptr icu_simple_date_format =
       date_time_format->icu_simple_date_format()->ptr();
   DirectHandle<Object> timezone =
       JSDateTimeFormat::TimeZone(isolate, date_time_format);
@@ -1002,7 +1001,7 @@ template <typename T>
 Maybe<DateTimeValueRecord> HandleDateTimeTemporalGeneric(
     Isolate* isolate, DirectHandle<JSDateTimeFormat> date_time_format,
     PatternKind kind, DirectHandle<T> temporal) {
-  CppGCManaged<icu::SimpleDateFormat>::Ptr icu_date_format =
+  Managed<icu::SimpleDateFormat>::Ptr icu_date_format =
       date_time_format->icu_simple_date_format()->ptr();
 
   // Onlt perform this check for calendared types (not Time)
@@ -1231,7 +1230,7 @@ Maybe<DateTimeValueRecord> HandleDateTimeValue(
   return HandleDateTimeOthers(isolate, date_time_format, x, method_name);
 }
 
-char16_t EqualventSkeletonchar(char16_t in) {
+char16_t EquivalentSkeletonChar(char16_t in) {
   switch (in) {
     case 'L':
       return 'M';
@@ -1247,6 +1246,10 @@ char16_t EqualventSkeletonchar(char16_t in) {
       return 'z';
     case 'v':
       return 'z';
+    case 'r':
+      return 'y';
+    case 'U':
+      return 'y';
     default:
       return '\0';
   }
@@ -1257,7 +1260,7 @@ icu::UnicodeString AdjustDateTimeStyleFormat(
     const std::set<char16_t>& allowed_options) {
   std::set<char16_t> allowed(allowed_options);
   for (int ch : allowed_options) {
-    auto also = EqualventSkeletonchar(ch);
+    auto also = EquivalentSkeletonChar(ch);
     if (also) {
       allowed.emplace(also);
     }
@@ -1349,7 +1352,7 @@ icu::UnicodeString GetDateTimeFormat(const icu::UnicodeString& options,
     char16_t ch = options.charAt(i);
     if (required_options.find(ch) != required_options.end()) {
       to_be_added.erase(ch);
-      auto also = EqualventSkeletonchar(ch);
+      auto also = EquivalentSkeletonChar(ch);
       if (also) {
         to_be_added.erase(also);
       }
@@ -1400,6 +1403,9 @@ std::set<char16_t> ExplicitComponentsSet(int32_t components) {
   }
   if (Year::decode(components)) {
     result.insert('y');
+    result.insert('r');
+    result.insert('U');
+    result.insert('G');
   }
   if (Month::decode(components)) {
     result.insert('M');
@@ -1491,7 +1497,7 @@ icu::UnicodeString GetSkeletonForPatternKind(
             best_format,
             // Allowed options:  [[weekday]], [[era]], [[year]], [[month]],
             // [[day]]
-            {'E', 'c', 'G', 'y', 'M', 'L', 'd'});
+            {'E', 'c', 'G', 'y', 'r', 'U', 'M', 'L', 'd'});
       }
       // ii. Set dateTimeFormat.[[TemporalPlainYearMonthFormat]] to
       // AdjustDateTimeStyleFormat(formats, bestFormat, formatMatcher, «
@@ -1502,7 +1508,7 @@ icu::UnicodeString GetSkeletonForPatternKind(
         // [[era]], [[year]], [[month]] »).
         return AdjustDateTimeStyleFormat(best_format,
                                          // Allowed options: [[year]], [[month]]
-                                         {'G', 'y', 'M', 'L'});
+                                         {'G', 'y', 'r', 'U', 'M', 'L'});
       }
       if (kind == PatternKind::kPlainMonthDay) {
         // iii. Set dateTimeFormat.[[TemporalPlainMonthDayFormat]] to
@@ -1540,8 +1546,8 @@ icu::UnicodeString GetSkeletonForPatternKind(
             // [[weekday]], [[era]], [[year]], [[month]],
             // [[day]], [[hour]], [[minute]], [[second]], [[dayPeriod]],
             // [[fractionalSecondDigits]]
-            {'E', 'c', 'G', 'y', 'M', 'L', 'd', 'h', 'H', 'k', 'K', 'j', 'm',
-             's', 'B', 'b', 'a', 'S'});
+            {'E', 'c', 'G', 'y', 'r', 'U', 'M', 'L', 'd', 'h', 'H', 'k', 'K',
+             'j', 'm', 's', 'B', 'b', 'a', 'S'});
       case PatternKind::kInstant:
         // k. Set dateTimeFormat.[[TemporalInstantFormat]] to bestFormat.
         return best_format;
@@ -1556,7 +1562,7 @@ icu::UnicodeString GetSkeletonForPatternKind(
     //    b. Let requiredOptions be « "weekday", "year", "month", "day",
     //    "dayPeriod", "hour", "minute", "second", "fractionalSecondDigits" ».
     static const std::initializer_list<char16_t> kRequiredAny{
-        'E', 'c', 'G', 'y', 'M', 'L', 'd', 'h', 'H',
+        'E', 'c', 'G', 'y', 'r', 'U', 'M', 'L', 'd', 'h', 'H',
         'k', 'K', 'j', 'm', 's', 'B', 'b', 'a', 'S'};
     // 10. Else,
     //     a. Assert: defaults is zoned-date-time or all.
@@ -1571,7 +1577,7 @@ icu::UnicodeString GetSkeletonForPatternKind(
         // const std::set<char16_t> kRequireddate({{'E', 'c', 'G', 'y', 'M',
         // 'L', 'd'}});
         static const std::initializer_list<char16_t> kRequiredDate{
-            'E', 'c', 'G', 'y', 'M', 'L', 'd'};
+            'E', 'c', 'G', 'y', 'r', 'U', 'M', 'L', 'd'};
         // 6. If defaults is date, then
         //   a. Let defaultOptions be « "year", "month", "day" ».
         static const std::initializer_list<char16_t> kDefaultsDate{'y', 'M',
@@ -1588,7 +1594,7 @@ icu::UnicodeString GetSkeletonForPatternKind(
         // 3. Else if required is year-month, then
         //    a. Let requiredOptions be « "year", "month" ».
         static const std::initializer_list<char16_t> kRequiredYearMonth{
-            'G', 'y', 'M', 'L'};
+            'G', 'y', 'r', 'U', 'M', 'L'};
         // 8. Else if defaults is year-month, then
         //    a. Let defaultOptions be « "year", "month" ».
         static const std::initializer_list<char16_t> kDefaultsYearMonth{'y',
@@ -1793,7 +1799,7 @@ MaybeDirectHandle<String> FormatDateTime(
 MaybeDirectHandle<String> FormatMillisecondsByKindToString(
     Isolate* isolate, DirectHandle<JSDateTimeFormat> date_time_format,
     DirectHandle<Object> value, PatternKind kind, bool is_plain, double x) {
-  CppGCManaged<icu::SimpleDateFormat>::Ptr icu_date_format =
+  Managed<icu::SimpleDateFormat>::Ptr icu_date_format =
       date_time_format->icu_simple_date_format()->ptr();
   UErrorCode status = U_ZERO_ERROR;
   std::optional<icu::UnicodeString> result = CallICUFormat(
@@ -1849,7 +1855,7 @@ MaybeDirectHandle<String> JSDateTimeFormat::DateTimeFormat(
     x = Object::NumberValue(*date);
   }
   // 5. Return FormatDateTime(dtf, x).
-  CppGCManaged<icu::SimpleDateFormat>::Ptr format =
+  Managed<icu::SimpleDateFormat>::Ptr format =
       date_time_format->icu_simple_date_format()->ptr();
   return FormatDateTime(isolate, *format, x);
 }
@@ -1919,7 +1925,7 @@ MaybeDirectHandle<String> JSDateTimeFormat::ToLocaleDateTime(
       JSDateTimeFormat::CreateDateTimeFormat(
           isolate, map, locales, options, required, defaults, {}, method_name));
 
-  CppGCManaged<icu::SimpleDateFormat>::Ptr format =
+  Managed<icu::SimpleDateFormat>::Ptr format =
       date_time_format->icu_simple_date_format()->ptr();
   if (can_cache) {
     isolate->set_icu_object_in_cache(cache_type, locales,
@@ -2346,7 +2352,7 @@ std::unique_ptr<icu::DateIntervalFormat> LazyCreateDateIntervalFormat(
     loc.setUnicodeKeywordValue("hc", hcString, status);
   }
 
-  CppGCManaged<icu::SimpleDateFormat>::Ptr icu_simple_date_format =
+  Managed<icu::SimpleDateFormat>::Ptr icu_simple_date_format =
       date_time_format->icu_simple_date_format()->ptr();
 
   icu::UnicodeString skeleton = GetSkeletonForPatternKind(
@@ -2361,9 +2367,9 @@ std::unique_ptr<icu::DateIntervalFormat> LazyCreateDateIntervalFormat(
   if (kind != PatternKind::kDate) {
     return date_interval_format;
   }
-  DirectHandle<CppGCManaged<icu::DateIntervalFormat>> managed_interval_format =
-      CppGCManaged<icu::DateIntervalFormat>::Create(
-          isolate, 0, std::move(date_interval_format));
+  DirectHandle<Managed<icu::DateIntervalFormat>> managed_interval_format =
+      Managed<icu::DateIntervalFormat>::From(isolate, 0,
+                                             std::move(date_interval_format));
   date_time_format->set_icu_date_interval_format(*managed_interval_format);
 
   DisallowGarbageCollection no_gc;
@@ -3081,16 +3087,16 @@ MaybeDirectHandle<JSDateTimeFormat> JSDateTimeFormat::CreateDateTimeFormat(
       isolate->factory()->NewStringFromAsciiChecked(
           maybe_locale_str.FromJust().c_str());
 
-  DirectHandle<CppGCManaged<icu::Locale>> managed_locale =
-      CppGCManaged<icu::Locale>::Create(
+  DirectHandle<Managed<icu::Locale>> managed_locale =
+      Managed<icu::Locale>::From(
           isolate, 0, std::shared_ptr<icu::Locale>{icu_locale.clone()});
 
-  DirectHandle<CppGCManaged<icu::SimpleDateFormat>> managed_format =
-      CppGCManaged<icu::SimpleDateFormat>::Create(isolate, 0,
-                                                  std::move(icu_date_format));
+  DirectHandle<Managed<icu::SimpleDateFormat>> managed_format =
+      Managed<icu::SimpleDateFormat>::From(isolate, 0,
+                                           std::move(icu_date_format));
 
-  DirectHandle<CppGCManaged<icu::DateIntervalFormat>> managed_interval_format =
-      CppGCManaged<icu::DateIntervalFormat>::Create(isolate, 0, nullptr);
+  DirectHandle<Managed<icu::DateIntervalFormat>> managed_interval_format =
+      Managed<icu::DateIntervalFormat>::From(isolate, 0, nullptr);
 
   // Now all properties are ready, so we can allocate the result object.
   DirectHandle<JSDateTimeFormat> date_time_format = Cast<JSDateTimeFormat>(
@@ -3188,7 +3194,7 @@ MaybeDirectHandle<JSArray> FormatMillisecondsByKindToArray(
     bool output_source) {
   icu::FieldPositionIterator fp_iter;
   UErrorCode status = U_ZERO_ERROR;
-  CppGCManaged<icu::SimpleDateFormat>::Ptr icu_date_format =
+  Managed<icu::SimpleDateFormat>::Ptr icu_date_format =
       date_time_format->icu_simple_date_format()->ptr();
   auto formatted = CallICUFormat(
       *icu_date_format, date_time_format->explicit_components_in_options(),
@@ -3493,7 +3499,7 @@ std::optional<MaybeDirectHandle<T>> PartitionDateTimeRangePattern(
     THROW_NEW_ERROR(isolate, NewTypeError(MessageTemplate::kIcuError));
   }
 
-  CppGCManaged<icu::SimpleDateFormat>::Ptr date_format =
+  Managed<icu::SimpleDateFormat>::Ptr date_format =
       date_time_format->icu_simple_date_format()->ptr();
   const icu::Calendar* calendar = date_format->getCalendar();
 
@@ -3587,7 +3593,7 @@ MaybeDirectHandle<T> FormatRangeCommonWithTemporalSupport(
     THROW_NEW_ERROR(isolate, NewTypeError(MessageTemplate::kIcuError));
   }
 
-  CppGCManaged<icu::SimpleDateFormat>::Ptr icu_date_format =
+  Managed<icu::SimpleDateFormat>::Ptr icu_date_format =
       date_time_format->icu_simple_date_format()->ptr();
 
   // 17. Assert: xFormatRecord.[[IsPlain]] = yFormatRecord.[[IsPlain]].

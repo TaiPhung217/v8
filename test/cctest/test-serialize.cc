@@ -209,15 +209,13 @@ StartupBlobs Serialize(v8::Isolate* isolate) {
     i_isolate->read_only_heap()->OnCreateHeapObjectsComplete(i_isolate);
   }
 
-  ReadOnlySerializer read_only_serializer(i_isolate,
-                                          Snapshot::kDefaultSerializerFlags);
+  Snapshot::SerializerFlags flags(Snapshot::kAllowSerializingAllTrustedObjects);
+  ReadOnlySerializer read_only_serializer(i_isolate, flags);
   read_only_serializer.Serialize();
 
-  SharedHeapSerializer shared_space_serializer(
-      i_isolate, Snapshot::kDefaultSerializerFlags);
+  SharedHeapSerializer shared_space_serializer(i_isolate, flags);
 
-  StartupSerializer ser(i_isolate, Snapshot::kDefaultSerializerFlags,
-                        &shared_space_serializer);
+  StartupSerializer ser(i_isolate, flags, &shared_space_serializer);
   ser.SerializeStrongReferences(no_gc);
 
   ser.SerializeWeakReferencesAndDeferred();
@@ -428,22 +426,22 @@ static void SerializeContext(base::Vector<const uint8_t>* startup_blob_out,
       isolate->read_only_heap()->OnCreateHeapObjectsComplete(isolate);
     }
 
+    Snapshot::SerializerFlags flags(
+        Snapshot::kAllowSerializingAllTrustedObjects);
     SnapshotByteSink read_only_sink;
-    ReadOnlySerializer read_only_serializer(isolate,
-                                            Snapshot::kDefaultSerializerFlags);
+    ReadOnlySerializer read_only_serializer(isolate, flags);
     read_only_serializer.Serialize();
 
-    SharedHeapSerializer shared_space_serializer(
-        isolate, Snapshot::kDefaultSerializerFlags);
+    SharedHeapSerializer shared_space_serializer(isolate, flags);
 
     SnapshotByteSink startup_sink;
-    StartupSerializer startup_serializer(
-        isolate, Snapshot::kDefaultSerializerFlags, &shared_space_serializer);
+    StartupSerializer startup_serializer(isolate, flags,
+                                         &shared_space_serializer);
     startup_serializer.SerializeStrongReferences(no_gc);
 
     SnapshotByteSink context_sink;
     ContextSerializer context_serializer(
-        isolate, Snapshot::kDefaultSerializerFlags, &startup_serializer,
+        isolate, flags, &startup_serializer,
         SerializeEmbedderFieldsCallback(v8::SerializeInternalFieldsCallback()));
     context_serializer.Serialize(&raw_context, no_gc);
 
@@ -622,23 +620,22 @@ static void SerializeCustomContext(
         i_isolate->read_only_heap()->OnCreateHeapObjectsComplete(i_isolate);
       }
 
+      Snapshot::SerializerFlags flags(
+          Snapshot::kAllowSerializingAllTrustedObjects);
       SnapshotByteSink read_only_sink;
-      ReadOnlySerializer read_only_serializer(
-          i_isolate, Snapshot::kDefaultSerializerFlags);
+      ReadOnlySerializer read_only_serializer(i_isolate, flags);
       read_only_serializer.Serialize();
 
-      SharedHeapSerializer shared_space_serializer(
-          i_isolate, Snapshot::kDefaultSerializerFlags);
+      SharedHeapSerializer shared_space_serializer(i_isolate, flags);
 
       SnapshotByteSink startup_sink;
-      StartupSerializer startup_serializer(i_isolate,
-                                           Snapshot::kDefaultSerializerFlags,
+      StartupSerializer startup_serializer(i_isolate, flags,
                                            &shared_space_serializer);
       startup_serializer.SerializeStrongReferences(no_gc);
 
       SnapshotByteSink context_sink;
       ContextSerializer context_serializer(
-          i_isolate, Snapshot::kDefaultSerializerFlags, &startup_serializer,
+          i_isolate, flags, &startup_serializer,
           SerializeEmbedderFieldsCallback(
               v8::SerializeInternalFieldsCallback()));
       context_serializer.Serialize(&raw_context, no_gc);
@@ -3742,11 +3739,11 @@ int serialized_static_field = 314;
 
 void SerializedCallback(const v8::FunctionCallbackInfo<v8::Value>& info) {
   CHECK(i::ValidateCallbackInfo(info));
-  if (info.Data()->IsExternal()) {
-    CHECK_EQ(info.Data().As<v8::External>()->Value(kIntPointerTag),
+  if (info.DataV2()->IsValue() && info.DataV2().As<v8::Value>()->IsExternal()) {
+    CHECK_EQ(info.DataV2().As<v8::External>()->Value(kIntPointerTag),
              static_cast<void*>(&serialized_static_field));
     int* value = reinterpret_cast<int*>(
-        info.Data().As<v8::External>()->Value(kIntPointerTag));
+        info.DataV2().As<v8::External>()->Value(kIntPointerTag));
     (*value)++;
   }
   info.GetReturnValue().Set(v8_num(42));
@@ -4827,11 +4824,9 @@ UNINITIALIZED_TEST(SerializeApiWrapperData) {
           object_template->NewInstance(context).ToLocalChecked();
       wrappable1 = cppgc::MakeGarbageCollected<DummyWrappable>(
           cpp_heap->GetAllocationHandle());
-      v8::Object::Wrap<v8::CppHeapPointerTag::kTagForTesting>(isolate, obj1,
-                                                              wrappable1);
-      CHECK_EQ(
-          wrappable1,
-          v8::Object::Unwrap<CppHeapPointerTag::kTagForTesting>(isolate, obj1));
+      v8::Object::Wrap<i::kTagForTesting>(isolate, obj1, wrappable1);
+      CHECK_EQ(wrappable1,
+               v8::Object::Unwrap<i::kTagForTesting>(isolate, obj1));
       CHECK(context->Global()->Set(context, v8_str("obj1"), obj1).FromJust());
 
       v8::Local<v8::Object> obj2 =
@@ -4839,11 +4834,9 @@ UNINITIALIZED_TEST(SerializeApiWrapperData) {
       wrappable2 = cppgc::MakeGarbageCollected<DummyWrappable>(
           cpp_heap->GetAllocationHandle());
       wrappable2->is_special = true;
-      v8::Object::Wrap<v8::CppHeapPointerTag::kTagForTesting>(isolate, obj2,
-                                                              wrappable2);
-      CHECK_EQ(
-          wrappable2,
-          v8::Object::Unwrap<CppHeapPointerTag::kTagForTesting>(isolate, obj2));
+      v8::Object::Wrap<i::kTagForTesting>(isolate, obj2, wrappable2);
+      CHECK_EQ(wrappable2,
+               v8::Object::Unwrap<i::kTagForTesting>(isolate, obj2));
       CHECK(context->Global()->Set(context, v8_str("obj2"), obj2).FromJust());
 
       creator.SetDefaultContext(context, SerializeInternalFieldsCallback(),

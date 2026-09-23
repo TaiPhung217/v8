@@ -4,6 +4,7 @@
 
 #include "src/sandbox/testing.h"
 
+#include <atomic>
 #include <cstring>
 #include <vector>
 
@@ -1076,6 +1077,11 @@ void FilterCrash(const char* reason) {
 struct sigaction g_old_handlers[NSIG];
 constexpr int kSignalsToHandle[] = {SIGABRT, SIGTRAP, SIGBUS, SIGILL, SIGSEGV};
 
+std::atomic<bool> g_is_sandbox_violation{false};
+#ifdef V8_USE_ADDRESS_SANITIZER
+bool g_is_asan_fault_harmless = false;
+#endif
+
 void UninstallCrashFilter() {
   // NOTE: This code MUST be async-signal safe.
   // NO malloc or stdio is allowed here.
@@ -1092,8 +1098,8 @@ void UninstallCrashFilter() {
   }
 
   // We should also uninstall the sanitizer death callback as our crash filter
-  // may hand a crash over to sanitizers, which should then not enter our crash
-  // filtering logic a second time.
+  // may hand a crash over to sanitizers, which should then not print the
+  // sandbox violation message a second time.
 #ifdef V8_USE_ANY_SANITIZER
   __sanitizer_set_death_callback(nullptr);
 #endif  // V8_USE_ANY_SANITIZER
@@ -1306,6 +1312,8 @@ void CrashFilter(int signal, siginfo_t* info, void* context) {
   // If we get here, we've detected a sandbox violation.
   PrintToStderr("\n## V8 sandbox violation detected!\n\n");
 
+  g_is_sandbox_violation = true;
+
   if (access_type == MemoryAccessType::kRead) {
     PrintToStderr(
         "The sandbox violation was a *read* access which is technically not a "
@@ -1332,6 +1340,8 @@ void CrashFilter(int signal, siginfo_t* info, void* context) {
 }
 
 #ifdef V8_USE_ADDRESS_SANITIZER
+namespace {
+
 bool IsHarmlessMemcpyParamOverlap() {
   const void* src_addr = nullptr;
   size_t src_size = 0;
@@ -1364,32 +1374,78 @@ bool IsHarmlessMemcpyParamOverlap() {
          sandbox->ReservationContains(dest_begin) &&
          sandbox->ReservationContains(dest_last);
 }
+
+bool IsHarmlessASanFault(const char* description, Address faultaddr,
+                         MemoryAccessType access_type) {
+  if (description && strcmp(description, "memcpy-param-overlap") == 0) {
+    if (IsHarmlessMemcpyParamOverlap()) {
+      PrintToStderr(
+          "Caught harmless ASan fault (overlapping memcpy safely contained "
+          "in the sandbox).\n");
+      return true;
+    }
+    // Otherwise, treat it as a sandbox violation.
+    return false;
+  }
+
+  if (faultaddr == kNullAddress) {
+    PrintToStderr(
+        "Caught ASan fault without a fault address. Ignoring it as we cannot "
+        "check if it is a sandbox violation.\n");
+    return true;
+  }
+
+  if (IsCrashInSafeMemoryRegion(faultaddr, access_type)) {
+    PrintToStderr("Caught harmless ASan fault (inside safe region).\n");
+    return true;
+  }
+
+  return false;
+}
+}  // namespace
+
+extern "C" V8_EXPORT_PRIVATE void __asan_on_error() {
+  if (SandboxTesting::mode() == SandboxTesting::Mode::kDisabled) return;
+
+  if (!__asan_report_present()) {
+    // Should not occur normally, but falling back to treating this as an error
+    // as defense-in-depth.
+    g_is_sandbox_violation = true;
+    return;
+  }
+
+  // Prevent unnecessary/confusing reporting if we already know the crash
+  // classification.
+  if (g_is_sandbox_violation) return;
+
+  const char* const description = __asan_get_report_description();
+  const Address faultaddr =
+      reinterpret_cast<Address>(__asan_get_report_address());
+  const MemoryAccessType access_type = __asan_get_report_access_type() == 0
+                                           ? MemoryAccessType::kRead
+                                           : MemoryAccessType::kWrite;
+  if (IsHarmlessASanFault(description, faultaddr, access_type)) {
+    g_is_asan_fault_harmless = true;
+  } else {
+    g_is_sandbox_violation = true;
+  }
+}
 #endif  // V8_USE_ADDRESS_SANITIZER
 
 #ifdef V8_USE_ANY_SANITIZER
 void SanitizerFaultHandler() {
 #ifdef V8_USE_ADDRESS_SANITIZER
-  if (__asan_report_present()) {
-    const char* const description = __asan_get_report_description();
-    const Address faultaddr =
-        reinterpret_cast<Address>(__asan_get_report_address());
-    const MemoryAccessType access_type = __asan_get_report_access_type() == 0
-                                             ? MemoryAccessType::kRead
-                                             : MemoryAccessType::kWrite;
-    if (description && strcmp(description, "memcpy-param-overlap") == 0) {
-      if (IsHarmlessMemcpyParamOverlap()) {
-        FilterCrash(
-            "Caught harmless ASan fault (overlapping memcpy safely contained "
-            "in the sandbox).");
-      }
-      // Otherwise, fall through to the sandbox report.
-    } else if (faultaddr == kNullAddress) {
-      FilterCrash(
-          "Caught ASan fault without a fault address. Ignoring it as we cannot "
-          "check if it is a sandbox violation.");
-    } else if (IsCrashInSafeMemoryRegion(faultaddr, access_type)) {
-      FilterCrash("Caught harmless ASan fault (inside safe region).");
-    }
+  if (!g_is_sandbox_violation && !g_is_asan_fault_harmless) {
+    PrintToStderr(
+        "Warning: ASan death callback triggered before the fault could be "
+        "classified. Falling back to treating it as a sandbox violation.\n");
+  }
+
+  if (g_is_asan_fault_harmless && !g_is_sandbox_violation) {
+    PrintToStderr("Exiting process after harmless fault...\n");
+    int status =
+        SandboxTesting::mode() == SandboxTesting::Mode::kForFuzzing ? -1 : 0;
+    _exit(status);
   }
 #endif  // V8_USE_ADDRESS_SANITIZER
 
@@ -1425,8 +1481,8 @@ void InstallCrashFilter() {
   CHECK(success);
 
 #ifdef V8_USE_ANY_SANITIZER
-  // We install sanitizer specific crash handlers. These can only check for
-  // in-sandbox crashes on certain configurations.
+  // We install a sanitizer death callback. For ASan, this will check the flag
+  // set by __asan_on_error to determine if the fault was harmless.
   //
   // The crash handler also resets the signal handler as sanitizer may use
   // `abort()` via `abort_on_error=1` option to signal problems.
@@ -1588,6 +1644,8 @@ SandboxTesting::FieldOffsetMap& SandboxTesting::GetFieldOffsetMap() {
         offsetof(JSPromise, reactions_or_result_);
     fields[PROMISE_REACTION_TYPE]["fulfill_handler"] =
         offsetof(PromiseReaction, fulfill_handler_);
+    fields[PROMISE_REACTION_TYPE]["reject_handler"] =
+        offsetof(PromiseReaction, reject_handler_);
     fields[FEEDBACK_CELL_TYPE]["value"] = offsetof(FeedbackCell, value_);
     fields[FEEDBACK_VECTOR_TYPE]["length"] = offsetof(FeedbackVector, length_);
     fields[FEEDBACK_VECTOR_TYPE]["data"] =

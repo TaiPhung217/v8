@@ -678,6 +678,7 @@ constexpr bool CanTriggerGC(T... properties) {
   F(ScheduleGCInStackCheck, 0, 1)                                        \
   F(SerializeDeserializeNow, 0, 1)                                       \
   F(SetAllocationTimeout, -1 /* 2 || 3 */, 1)                            \
+  F(SetDispatchTableGCInterval, 1, 1)                                    \
   F(SetBatterySaverMode, 1, 1)                                           \
   F(SetForceSlowPath, 1, 1)                                              \
   F(SetIteratorProtector, 0, 1)                                          \
@@ -789,6 +790,8 @@ constexpr bool CanTriggerGC(T... properties) {
   F(WasmConfigureAllPrototypes, 4, 1)                            \
   F(WasmConfigureAllPrototypesOpt, 3, 1)                         \
   F(DebugCollectWasmCoverage, 0, 1)                              \
+  IF_TSAN(F, TsanAcquireForInitializationFence, 1, 1,            \
+          RuntimeCallProperty::kCannotTriggerGC)                 \
   F(WasmTypeAssertionFailed, 0, 1, RuntimeCallProperty::kCannotTriggerGC)
 
 #define FOR_EACH_INTRINSIC_WASM_TEST(F, I)                      \

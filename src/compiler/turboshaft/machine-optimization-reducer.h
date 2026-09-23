@@ -1603,6 +1603,58 @@ class MachineOptimizationReducer : public Next {
     return Next::ReduceOverflowCheckedBinop(left, right, kind, rep);
   }
 
+  // Checks if {al, ah} is the result of an add128(x, 0, y, 0) and {bh} is
+  // another constant 0 high half, and returns the nested add128 if so.
+  // Returns nullptr if it fails to match the pattern.
+  const Word64AddSub128BinopOp* TryMatchAdd3(V<Word64> al, V<Word64> ah,
+                                             V<Word64> bh) {
+    const ProjectionOp* p0 = matcher_.TryCast<ProjectionOp>(al);
+    if (!p0 || p0->index != 0) return nullptr;
+    const ProjectionOp* p1 = matcher_.TryCast<ProjectionOp>(ah);
+    if (!p1 || p1->index != 1) return nullptr;
+    if (p0->input() != p1->input()) return nullptr;
+    if (!matcher_.Get(al).saturated_use_count.Is(0) ||
+        !matcher_.Get(ah).saturated_use_count.Is(0)) {
+      return nullptr;
+    }
+    const Word64AddSub128BinopOp* nested =
+        matcher_.TryCast<Word64AddSub128BinopOp>(p0->input());
+    if (!nested) return nullptr;
+    if (nested->kind != Word64AddSub128BinopOp::Kind::kAdd) return nullptr;
+    if (!matcher_.MatchZero(nested->left_high()) ||
+        !matcher_.MatchZero(nested->right_high()) || !matcher_.MatchZero(bh)) {
+      return nullptr;
+    }
+    return nested;
+  }
+
+  V<Word64Pair> REDUCE(Word64AddSub128Binop)(
+      V<Word64> al, V<Word64> ah, V<Word64> bl, V<Word64> bh,
+      Word64AddSub128BinopOp::Kind kind) {
+    if (ShouldSkipOptimizationStep()) {
+      return Next::ReduceWord64AddSub128Binop(al, ah, bl, bh, kind);
+    }
+
+#if defined(V8_TARGET_ARCH_X64) || defined(V8_TARGET_ARCH_ARM64) || \
+    defined(V8_TARGET_ARCH_LOONG64) || defined(V8_TARGET_ARCH_MIPS64)
+    if (kind == Word64AddSub128BinopOp::Kind::kAdd) {
+      // add128(add128(x, 0, y, 0), z, 0) -> add3(x, y, z)
+      if (const Word64AddSub128BinopOp* nested = TryMatchAdd3(al, ah, bh)) {
+        return __ Word64Add3(nested->left_low(), nested->right_low(), bl);
+      }
+
+      // add128(x, 0, add128(y, 0, z, 0)) -> add3(x, y, z)
+      if (const Word64AddSub128BinopOp* nested = TryMatchAdd3(bl, bh, ah)) {
+        return __ Word64Add3(al, nested->left_low(), nested->right_low());
+      }
+    }
+    // TODO(ryandiaz): sub128(sub128(x, 0, y, 0), z, 0) -> sub2(x, y, z)
+    // TODO(ryandiaz): sub128(x, 0, add128(y, 0, z, 0)) -> sub2(x, y, z)
+#endif  // defined(V8_TARGET_ARCH_X64) || defined(V8_TARGET_ARCH_ARM64) ||
+        // defined(V8_TARGET_ARCH_LOONG64) || defined(V8_TARGET_ARCH_MIPS64)
+    return Next::ReduceWord64AddSub128Binop(al, ah, bl, bh, kind);
+  }
+
   V<Word32> REDUCE(Comparison)(V<Any> left, V<Any> right,
                                ComparisonOp::Kind kind,
                                RegisterRepresentation rep) {
@@ -2639,10 +2691,10 @@ class MachineOptimizationReducer : public Next {
         goto no_change;
       case MachineRepresentation::kWord8: {
         if (shuffles.size() == 4) {
-          const uint8_t* shuffle1 = shuffles[0]->shuffle;
-          const uint8_t* shuffle2 = shuffles[1]->shuffle;
-          const uint8_t* shuffle3 = shuffles[2]->shuffle;
-          const uint8_t* shuffle4 = shuffles[3]->shuffle;
+          const uint8_t* shuffle1 = shuffles[0]->shuffle.data();
+          const uint8_t* shuffle2 = shuffles[1]->shuffle.data();
+          const uint8_t* shuffle3 = shuffles[2]->shuffle.data();
+          const uint8_t* shuffle4 = shuffles[3]->shuffle.data();
           if (SimdShuffle::TryMatch8x16UpperToLowerReduce(shuffle1, shuffle2,
                                                           shuffle3, shuffle4)) {
             V<Simd128> reduce = __ Simd128Reduce(
@@ -2654,9 +2706,9 @@ class MachineOptimizationReducer : public Next {
       }
       case MachineRepresentation::kWord16: {
         if (shuffles.size() == 3) {
-          const uint8_t* shuffle1 = shuffles[0]->shuffle;
-          const uint8_t* shuffle2 = shuffles[1]->shuffle;
-          const uint8_t* shuffle3 = shuffles[2]->shuffle;
+          const uint8_t* shuffle1 = shuffles[0]->shuffle.data();
+          const uint8_t* shuffle2 = shuffles[1]->shuffle.data();
+          const uint8_t* shuffle3 = shuffles[2]->shuffle.data();
           if (SimdShuffle::TryMatch16x8UpperToLowerReduce(shuffle1, shuffle2,
                                                           shuffle3)) {
             V<Simd128> reduce = __ Simd128Reduce(
@@ -2668,8 +2720,8 @@ class MachineOptimizationReducer : public Next {
       }
       case MachineRepresentation::kWord32: {
         if (shuffles.size() == 2) {
-          const uint8_t* shuffle1 = shuffles[0]->shuffle;
-          const uint8_t* shuffle2 = shuffles[1]->shuffle;
+          const uint8_t* shuffle1 = shuffles[0]->shuffle.data();
+          const uint8_t* shuffle2 = shuffles[1]->shuffle.data();
           if (SimdShuffle::TryMatch32x4UpperToLowerReduce(shuffle1, shuffle2)) {
             V<Simd128> reduce = __ Simd128Reduce(
                 reduce_input, Simd128ReduceOp::Kind::kI32x4AddReduce);
@@ -2680,8 +2732,8 @@ class MachineOptimizationReducer : public Next {
       }
       case MachineRepresentation::kFloat32: {
         if (shuffles.size() == 2) {
-          const uint8_t* shuffle1 = shuffles[0]->shuffle;
-          const uint8_t* shuffle2 = shuffles[1]->shuffle;
+          const uint8_t* shuffle1 = shuffles[0]->shuffle.data();
+          const uint8_t* shuffle2 = shuffles[1]->shuffle.data();
           if (SimdShuffle::TryMatch32x4PairwiseReduce(shuffle1, shuffle2)) {
             V<Simd128> reduce = __ Simd128Reduce(
                 reduce_input, Simd128ReduceOp::Kind::kF32x4AddReduce);
@@ -2694,7 +2746,7 @@ class MachineOptimizationReducer : public Next {
       case MachineRepresentation::kFloat64: {
         if (shuffles.size() == 1) {
           uint8_t shuffle64x2[2];
-          if (SimdShuffle::TryMatch64x2Shuffle(shuffles[0]->shuffle,
+          if (SimdShuffle::TryMatch64x2Shuffle(shuffles[0]->shuffle.data(),
                                                shuffle64x2) &&
               SimdShuffle::TryMatch64x2Reduce(shuffle64x2)) {
             V<Simd128> reduce =
@@ -2727,7 +2779,7 @@ class MachineOptimizationReducer : public Next {
 
     switch (lane) {
       case 0:
-        return __ Simd128Constant(constant_input->value);
+        return __ Simd128Constant(constant_input->value.data());
       case 1:
         return __ Simd128Constant(&constant_input->value[kSimd256Size / 2]);
       default:

@@ -1041,13 +1041,16 @@ void CallBuiltin::MarkTaggedInputsAsDecompressing() {
 
 void StoreTaggedFieldNoWriteBarrier::VerifyInputs() const {
   Base::VerifyInputs();
-  auto host_alloc = input(kObjectIndex).node()->TryCast<InlinedAllocation>();
-  auto value_alloc = input(kValueIndex).node()->TryCast<InlinedAllocation>();
-  if (host_alloc && value_alloc &&
-      host_alloc->allocation_block() == value_alloc->allocation_block()) {
-    CHECK_EQ(host_alloc->allocation_block()->allocation_type(),
-             AllocationType::kYoung);
-  }
+  // Here we'd like to verify that the write barrier can legitimately be
+  // skipped. However, we cannot, since this might be in dead code and our
+  // information might be inconsistent. This is because: 1) in Turbolev, we
+  // occasionally run the verifier before running GraphOptimizer which would
+  // delete dead branches and 2) we generally cannot detect upfront when we're
+  // in dead code.
+
+  // TODO(562805652): Could run the check for pure maglev (non-turbolev)
+  // compilations without eager inlining, if we were able to have that info
+  // here.
 }
 
 void InlinedAllocation::VerifyInputs() const {
@@ -3749,7 +3752,6 @@ void StoreMap::GenerateCode(MaglevAssembler* masm,
   Register object = WriteBarrierDescriptor::ObjectRegister();
   DCHECK_EQ(object, ToRegister(ValueInput()));
   Register value = temps.Acquire();
-  __ MoveTagged(value, map_.object());
 
   switch (kind()) {
     case Kind::kInlinedAllocation: {
@@ -3757,15 +3759,23 @@ void StoreMap::GenerateCode(MaglevAssembler* masm,
       auto inlined = ValueInput().node()->Cast<InlinedAllocation>();
       if (inlined->allocation_block()->allocation_type() ==
           AllocationType::kYoung) {
-        __ StoreTaggedFieldNoWriteBarrier(object, offsetof(HeapObject, map_),
-                                          value);
-        __ AssertElidedWriteBarrier(object, value, register_snapshot());
+        if (MaglevAssembler::kSupportsStoreTaggedConstant) {
+          __ StoreTaggedFieldNoWriteBarrier(object, offsetof(HeapObject, map_),
+                                            map_.object());
+          __ AssertElidedWriteBarrier(object, map_, register_snapshot());
+        } else {
+          __ MoveTagged(value, map_.object());
+          __ StoreTaggedFieldNoWriteBarrier(object, offsetof(HeapObject, map_),
+                                            value);
+          __ AssertElidedWriteBarrier(object, value, register_snapshot());
+        }
         break;
       }
       [[fallthrough]];
     }
     case Kind::kInitializing:
     case Kind::kTransitioning:
+      __ MoveTagged(value, map_.object());
       __ StoreTaggedFieldWithWriteBarrier(object, offsetof(HeapObject, map_),
                                           value, register_snapshot(),
                                           MaglevAssembler::kValueIsCompressed,
@@ -6090,15 +6100,28 @@ void StoreInt32::GenerateCode(MaglevAssembler* masm,
 
 void StoreTaggedFieldNoWriteBarrier::SetValueLocationConstraints() {
   UseRegister(ObjectInput());
-  UseRegister(ValueInput());
+  if (MaglevAssembler::CanStoreTaggedConstant(ValueInput().node())) {
+    // The constant is stored as an immediate and needs no register.
+    UseAny(ValueInput());
+  } else {
+    UseRegister(ValueInput());
+  }
 }
 void StoreTaggedFieldNoWriteBarrier::GenerateCode(
     MaglevAssembler* masm, const ProcessingState& state) {
   Register object = ToRegister(ObjectInput());
-  Register value = ToRegister(ValueInput());
 
   __ AssertNotSmi(object);
 
+  if (ValueInput().operand().IsConstant()) {
+    ValueNode* constant = ValueInput().node();
+    DCHECK(MaglevAssembler::CanStoreTaggedConstant(constant));
+    __ StoreTaggedFieldNoWriteBarrier(object, offset(), constant);
+    __ AssertElidedWriteBarrier(object, constant, register_snapshot());
+    return;
+  }
+
+  Register value = ToRegister(ValueInput());
   __ StoreTaggedFieldNoWriteBarrier(object, offset(), value);
   __ AssertElidedWriteBarrier(object, value, register_snapshot());
 }

@@ -716,6 +716,11 @@ MaybeAssignedFlag MaglevReducer<BaseT>::GetContextMaybeAssigned(
   }
   int header_length = scope_info.ContextHeaderLength();
   if (index < header_length) {
+    DCHECK_EQ(index, Context::EXTENSION_INDEX);
+    if (scope_info.SloppyEvalCanExtendVars()) {
+      *mode = VariableMode::kVar;
+      return kMaybeAssigned;
+    }
     *mode = VariableMode::kConst;
     return kNotAssigned;
   }
@@ -2678,18 +2683,20 @@ MaybeReduceResult MaglevReducer<BaseT>::TryBuildFastHasInPrototypeChain(
 template <typename BaseT>
 MaybeReduceResult MaglevReducer<BaseT>::TryBuildFastOrdinaryHasInstance(
     ValueNode* context, ValueNode* object, compiler::JSObjectRef callable,
-    ValueNode* callable_node_if_not_constant) {
+    ValueNode* callable_node_if_not_constant, int max_depth) {
   const bool is_constant = callable_node_if_not_constant == nullptr;
   if (!is_constant) return {};
 
   if (callable.IsJSBoundFunction()) {
+    if (max_depth == 0) return {};
     compiler::JSBoundFunctionRef function = callable.AsJSBoundFunction();
     compiler::JSReceiverRef bound_target_function =
         function.bound_target_function(broker());
 
     if (bound_target_function.IsJSObject()) {
-      RETURN_IF_DONE(TryBuildFastInstanceOf(
-          context, object, bound_target_function.AsJSObject(), nullptr));
+      RETURN_IF_DONE(TryBuildFastInstanceOf(context, object,
+                                            bound_target_function.AsJSObject(),
+                                            nullptr, max_depth - 1));
     }
 
     return BuildCallBuiltinWithTaggedInputs<Builtin::kInstanceOf>(
@@ -2716,9 +2723,9 @@ MaybeReduceResult MaglevReducer<BaseT>::TryBuildFastOrdinaryHasInstance(
 template <typename BaseT>
 ReduceResult MaglevReducer<BaseT>::BuildOrdinaryHasInstance(
     ValueNode* context, ValueNode* object, compiler::JSObjectRef callable,
-    ValueNode* callable_node_if_not_constant) {
+    ValueNode* callable_node_if_not_constant, int max_depth) {
   RETURN_IF_DONE(TryBuildFastOrdinaryHasInstance(
-      context, object, callable, callable_node_if_not_constant));
+      context, object, callable, callable_node_if_not_constant, max_depth));
 
   return BuildCallBuiltinWithTaggedInputs<Builtin::kOrdinaryHasInstance>(
       context, {callable_node_if_not_constant ? callable_node_if_not_constant
@@ -2738,7 +2745,7 @@ ReduceResult MaglevReducer<BaseT>::BuildToBoolean(ValueNode* value) {
 template <typename BaseT>
 MaybeReduceResult MaglevReducer<BaseT>::TryBuildFastInstanceOf(
     ValueNode* context, ValueNode* object, compiler::JSObjectRef callable,
-    ValueNode* callable_node_if_not_constant) {
+    ValueNode* callable_node_if_not_constant, int max_depth) {
   compiler::MapRef receiver_map = callable.map(broker());
   compiler::NameRef name = broker()->has_instance_symbol();
   compiler::PropertyAccessInfo access_info = broker()->GetPropertyAccessInfo(
@@ -2756,6 +2763,7 @@ MaybeReduceResult MaglevReducer<BaseT>::TryBuildFastInstanceOf(
         access_info.lookup_start_object_maps(), kStartAtPrototype);
 
     if (callable_node_if_not_constant) {
+      if (!CanEagerDeopt()) return {};
       RETURN_IF_ABORT(BuildCheckMaps(
           callable_node_if_not_constant,
           base::VectorOf(access_info.lookup_start_object_maps())));
@@ -2763,6 +2771,7 @@ MaybeReduceResult MaglevReducer<BaseT>::TryBuildFastInstanceOf(
       if (receiver_map.is_stable()) {
         broker()->dependencies()->DependOnStableMap(receiver_map);
       } else {
+        if (!CanEagerDeopt()) return {};
         RETURN_IF_ABORT(BuildCheckMaps(
             GetConstant(callable),
             base::VectorOf(access_info.lookup_start_object_maps())));
@@ -2770,7 +2779,7 @@ MaybeReduceResult MaglevReducer<BaseT>::TryBuildFastInstanceOf(
     }
 
     return BuildOrdinaryHasInstance(context, object, callable,
-                                    callable_node_if_not_constant);
+                                    callable_node_if_not_constant, max_depth);
   }
 
   if constexpr (!ReducerBaseCanBuildCall<BaseT>) {
@@ -2811,6 +2820,11 @@ MaybeReduceResult MaglevReducer<BaseT>::TryBuildFastInstanceOf(
       callable_node = GetConstant(callable);
     }
 
+    // If we reach this point, then we've passed the
+    // ReducerBaseCanBuildCall<BaseT> check, which only holds for the
+    // GraphBuilder, for which CanEagerDeopt is true, which means that we can
+    // emit a CheckMaps.
+    DCHECK(CanEagerDeopt());
     RETURN_IF_ABORT(BuildCheckMaps(
         callable_node, base::VectorOf(access_info.lookup_start_object_maps())));
 
@@ -2823,7 +2837,8 @@ MaybeReduceResult MaglevReducer<BaseT>::TryBuildFastInstanceOf(
         // {callable}, so we can treat the callable as a compile-time constant
         // from here on, which lets BuildOrdinaryHasInstance take its fast
         // path instead of calling the OrdinaryHasInstance builtin.
-        return BuildOrdinaryHasInstance(context, object, callable, nullptr);
+        return BuildOrdinaryHasInstance(context, object, callable, nullptr,
+                                        max_depth);
       }
     }
 
@@ -3377,19 +3392,15 @@ CallBuiltin* MaglevReducer<BaseT>::BuildCallBuiltin(
 // LINT.IfChange(WasmWrapperInliningConditions)
 template <typename BaseT>
 bool MaglevReducer<BaseT>::ShouldWrapArgsForWasmInlining(
-    compiler::SharedFunctionInfoRef shared, JSDispatchHandle dispatch_handle) {
+    JSDispatchHandle dispatch_handle) {
   if (!is_turbolev()) return false;
   if (!v8_flags.wasm_in_js_inlining_wrapper) return false;
-  // The SharedFunctionInfo of a Wasm exported function does not carry a
-  // builtin ID, so the check below filters out regular JS builtins.
-  // However, the Code installed in the dispatch table can be either:
+  // The Code installed in the dispatch table for a Wasm exported function can
+  // be either:
   //  - The generic kJSToWasmWrapper builtin (used before a per-signature
   //    wrapper has been compiled), or
   //  - A jitted per-signature wrapper (CodeKind::JS_TO_WASM_FUNCTION).
-  // We detect both cases by inspecting the Code object directly.
-  if (!shared.object()->HasWasmExportedFunctionData(local_isolate())) {
-    return false;
-  }
+  // We detect both cases by inspecting the Code object via the dispatch table.
   Tagged<Code> code =
       local_isolate()->js_dispatch_table().GetCode(dispatch_handle);
   return code->builtin_id() == Builtin::kJSToWasmWrapper ||
@@ -3407,7 +3418,7 @@ ReduceResult MaglevReducer<BaseT>::BuildCallKnownJSFunction(
     compiler::FeedbackSource const& feedback_source) {
 #if V8_ENABLE_WEBASSEMBLY
   const bool wrap_args_for_wasm =
-      ShouldWrapArgsForWasmInlining(shared, dispatch_handle);
+      ShouldWrapArgsForWasmInlining(dispatch_handle);
 #endif  // V8_ENABLE_WEBASSEMBLY
 
   size_t input_count = arg_count + CallKnownJSFunction::kFixedInputCount;
@@ -3678,6 +3689,13 @@ MaybeReduceResult MaglevReducer<BaseT>::TryFoldInt32BinaryOperation(
       return GetInt32Constant(result);
     case Operation::kMultiply:
       if (base::bits::SignedMulOverflow32(cst_left, cst_right, &result)) {
+        return {};
+      }
+      // The product is -0 if it is zero and either operand is negative (the
+      // other is then +0). -0 is not representable as an Int32 constant, so
+      // bail out and let Int32MultiplyWithOverflow handle it, as the -x fold
+      // above does.
+      if (result == 0 && (cst_left < 0 || cst_right < 0)) {
         return {};
       }
       return GetInt32Constant(result);

@@ -885,6 +885,10 @@ assert(
     !v8_enable_memory_corruption_api || !is_lsan,
     "The Memory Corruption API cannot be enabled together with LSan as both attach to the d8 process via ptrace")
 
+# ASan sandbox crash filters aren't wired up properly in component builds.
+assert(!v8_enable_memory_corruption_api || !is_component_build,
+       "The Memory Corruption API cannot be enabled in a component build")
+
 assert(!v8_enable_sandbox_hardware_support || v8_enable_sandbox,
        "The sandbox must be enabled to enable sandbox hardware support")
 
@@ -1438,6 +1442,9 @@ config("features") {
   }
   if (v8_enable_temporal_support) {
     defines += [ "V8_TEMPORAL_SUPPORT" ]
+  }
+  if (v8_enable_temporal_systemicu) {
+    defines += [ "V8_ENABLE_TEMPORAL_SYSTEMICU" ]
   }
   if (v8_enable_local_handle_zapping) {
     defines += [ "ENABLE_LOCAL_HANDLE_ZAPPING" ]
@@ -2526,6 +2533,12 @@ if (v8_use_metagen_instance_types) {
                "tools/metagen/instance_types.py",
                "tools/metagen/metagen.py",
                _metagen_driver_file,
+
+               # The driver's aggregate header. It declares no classes, so
+               # metagen records no fact from it and it is absent from the
+               # depfile, but its include list determines which headers the
+               # harvest parses. PRESUBMIT.py checks that the list is complete.
+               "src/objects/all-objects.h",
                "$root_out_dir/v8_build_config.json",
 
                # Proxy for the whole builtin-header directory, which has no
@@ -3469,6 +3482,7 @@ generated_file("v8_generate_features_json") {
     v8_enable_hugepage = v8_enable_hugepage
     v8_enable_i18n_support = v8_enable_i18n_support
     v8_enable_temporal_support = v8_enable_temporal_support
+    v8_enable_temporal_systemicu = v8_enable_temporal_systemicu
     v8_enable_javascript_promise_hooks = v8_enable_javascript_promise_hooks
     v8_enable_lite_mode = v8_enable_lite_mode
     v8_enable_map_packing = v8_enable_map_packing
@@ -4302,6 +4316,7 @@ v8_header_set("v8_internal_headers") {
     "src/date/date.h",
     "src/date/dateparser-inl.h",
     "src/date/dateparser.h",
+    "src/debug/debug-block-list.h",
     "src/debug/debug-coverage.h",
     "src/debug/debug-evaluate.h",
     "src/debug/debug-frames.h",
@@ -4904,6 +4919,7 @@ v8_header_set("v8_internal_headers") {
     "src/sandbox/cppheap-pointer-inl.h",
     "src/sandbox/cppheap-pointer-table-inl.h",
     "src/sandbox/cppheap-pointer-table.h",
+    "src/sandbox/cppheap-pointer-tag.h",
     "src/sandbox/cppheap-pointer.h",
     "src/sandbox/external-entity-table-inl.h",
     "src/sandbox/external-entity-table.h",
@@ -6259,6 +6275,7 @@ v8_cluster_source_set("v8_base_without_compiler") {
     "src/compiler/linkage.cc",
     "src/date/date.cc",
     "src/date/dateparser.cc",
+    "src/debug/debug-block-list.cc",
     "src/debug/debug-coverage.cc",
     "src/debug/debug-evaluate.cc",
     "src/debug/debug-frames.cc",
@@ -8463,7 +8480,10 @@ group("gn_all") {
 }
 
 group("v8_python_base") {
-  data = [ ".vpython3" ]
+  data = [
+    "vpython.toml",
+    "vpython.toml.uv.lock",
+  ]
 }
 
 # Enable fallbacks for files that might be hard to access on Clusterfuzz.

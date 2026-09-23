@@ -304,9 +304,13 @@ concept ReducerBaseWithKNASetter = requires(BaseT* b, KnownNodeAspects* kna) {
   b->set_known_node_aspects(kna);
 };
 
+// Bases that can emit eager deopting nodes provide both an eager deopt frame
+// and a predicate telling whether one is available at the current position.
 template <typename BaseT>
-concept ReducerBaseWithEagerDeopt =
-    requires(BaseT* b) { b->GetDeoptFrameForEagerDeopt(); };
+concept ReducerBaseWithEagerDeopt = requires(BaseT* b) {
+  b->GetDeoptFrameForEagerDeopt();
+  b->CanEagerDeopt();
+};
 
 template <typename BaseT>
 concept ReducerBaseWithAbruptBlockEnd =
@@ -746,6 +750,20 @@ class MaglevReducer {
     return current_eager_deopt_scope_;
   }
 
+  // Whether an eager deopt frame is available at the current position, ie,
+  // whether a reduction is allowed to emit nodes that can eager deopt. This is
+  // always the case while building the graph, but not while optimizing it: a
+  // node that only has lazy deopt info has no eager deopt frame to clone, and
+  // its lazy deopt frame cannot be used instead, since that one describes the
+  // state *after* the bytecode rather than the state needed to re-execute it.
+  bool CanEagerDeopt() const {
+    if constexpr (ReducerBaseWithEagerDeopt<BaseT>) {
+      return base_->CanEagerDeopt();
+    } else {
+      return false;
+    }
+  }
+
   MaglevReducer(BaseT* base, Graph* graph,
                 MaglevCompilationUnit* compilation_unit = nullptr)
       : base_(base),
@@ -872,13 +890,16 @@ class MaglevReducer {
       ValueNode* receiver, compiler::HeapObjectRef prototype);
   MaybeReduceResult TryBuildFastHasInPrototypeChain(
       ValueNode* object, compiler::HeapObjectRef prototype);
+  // Bound functions are unwrapped recursively; cap how deep we follow the
+  // bound_target_function chain to bound both graph size and stack usage.
+  static constexpr int kMaxBoundFunctionDepth = 5;
   MaybeReduceResult TryBuildFastOrdinaryHasInstance(
       ValueNode* context, ValueNode* object, compiler::JSObjectRef callable,
-      ValueNode* callable_node_if_not_constant);
-  MaybeReduceResult TryBuildFastInstanceOf(ValueNode* context,
-                                           ValueNode* object,
-                                           compiler::JSObjectRef callable_ref,
-                                           ValueNode* callable_node);
+      ValueNode* callable_node_if_not_constant,
+      int max_depth = kMaxBoundFunctionDepth);
+  MaybeReduceResult TryBuildFastInstanceOf(
+      ValueNode* context, ValueNode* object, compiler::JSObjectRef callable_ref,
+      ValueNode* callable_node, int max_depth = kMaxBoundFunctionDepth);
   MaybeReduceResult TryBuildFastInstanceOfWithFeedback(
       ValueNode* context, ValueNode* object, ValueNode* callable,
       compiler::FeedbackSource feedback_source);
@@ -911,7 +932,8 @@ class MaglevReducer {
 
   ReduceResult BuildOrdinaryHasInstance(
       ValueNode* context, ValueNode* object, compiler::JSObjectRef callable,
-      ValueNode* callable_node_if_not_constant);
+      ValueNode* callable_node_if_not_constant,
+      int max_depth = kMaxBoundFunctionDepth);
 
   template <bool flip = false>
   ReduceResult BuildToBoolean(ValueNode* value);
@@ -961,8 +983,7 @@ class MaglevReducer {
       compiler::FeedbackSource const& feedback_source);
 
 #if V8_ENABLE_WEBASSEMBLY
-  bool ShouldWrapArgsForWasmInlining(compiler::SharedFunctionInfoRef shared,
-                                     JSDispatchHandle dispatch_handle);
+  bool ShouldWrapArgsForWasmInlining(JSDispatchHandle dispatch_handle);
 #endif  // V8_ENABLE_WEBASSEMBLY
 
   compiler::OptionalStringRef GetStringFromInt32(int32_t value);
@@ -1059,6 +1080,9 @@ class MaglevReducer {
   ReduceResult BuildAndAllocateJSArrayIterator(ValueNode* array,
                                                IterationKind iteration_kind);
   void ClearCurrentAllocationBlock();
+  void SetCurrentAllocationBlock(AllocationBlock* block) {
+    current_allocation_block_ = block;
+  }
   void AddNonEscapingUses(InlinedAllocation* allocation, int use_count);
   AllocationBlock* current_allocation_block() const {
     return current_allocation_block_;

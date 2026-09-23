@@ -3008,6 +3008,70 @@ INSTANTIATE_TEST_SUITE_P(TurboshaftInstructionSelectorTest,
 
 #if V8_ENABLE_WEBASSEMBLY
 
+namespace {
+
+struct SIMDIntNarrowingInst {
+  const char* name;
+  TSBinop operation;
+  ArchOpcode narrow_opcode;
+  ArchOpcode narrow2_opcode;
+  int lane_size;
+};
+
+std::ostream& operator<<(std::ostream& os, const SIMDIntNarrowingInst& inst) {
+  return os << inst.name;
+}
+
+const SIMDIntNarrowingInst kSIMDIntNarrowingInstructions[] = {
+    {"I16x8SConvertI32x4", TSBinop::kI16x8SConvertI32x4, kArm64Sqxtn,
+     kArm64Sqxtn2, 32},
+    {"I16x8UConvertI32x4", TSBinop::kI16x8UConvertI32x4, kArm64Sqxtun,
+     kArm64Sqxtun2, 32},
+    {"I8x16SConvertI16x8", TSBinop::kI8x16SConvertI16x8, kArm64Sqxtn,
+     kArm64Sqxtn2, 16},
+    {"I8x16UConvertI16x8", TSBinop::kI8x16UConvertI16x8, kArm64Sqxtun,
+     kArm64Sqxtun2, 16},
+};
+
+}  // namespace
+
+using TurboshaftInstructionSelectorSIMDIntNarrowingTest =
+    TurboshaftInstructionSelectorTestWithParam<SIMDIntNarrowingInst>;
+
+TEST_P(TurboshaftInstructionSelectorSIMDIntNarrowingTest, Parameter) {
+  const SIMDIntNarrowingInst param = GetParam();
+  StreamBuilder m(this, MachineType::Simd128(), MachineType::Simd128(),
+                  MachineType::Simd128());
+  const V<Simd128> low = m.Parameter(0);
+  const V<Simd128> high = m.Parameter(1);
+  const OpIndex result = m.Emit(param.operation, low, high);
+  m.Return(result);
+  const Stream s = m.Build();
+
+  ASSERT_EQ(2U, s.size());
+
+  EXPECT_EQ(param.narrow_opcode, s[0]->arch_opcode());
+  EXPECT_EQ(param.lane_size,
+            LaneSizeBits(LaneSizeField::decode(s[0]->opcode())));
+  ASSERT_EQ(1U, s[0]->InputCount());
+  ASSERT_EQ(1U, s[0]->OutputCount());
+  EXPECT_EQ(s.ToVreg(low), s.ToVreg(s[0]->InputAt(0)));
+
+  EXPECT_EQ(param.narrow2_opcode, s[1]->arch_opcode());
+  EXPECT_EQ(param.lane_size,
+            LaneSizeBits(LaneSizeField::decode(s[1]->opcode())));
+  ASSERT_EQ(2U, s[1]->InputCount());
+  ASSERT_EQ(1U, s[1]->OutputCount());
+  EXPECT_EQ(s.ToVreg(s[0]->Output()), s.ToVreg(s[1]->InputAt(0)));
+  EXPECT_EQ(s.ToVreg(high), s.ToVreg(s[1]->InputAt(1)));
+  EXPECT_EQ(s.ToVreg(result), s.ToVreg(s[1]->Output()));
+  EXPECT_TRUE(s.IsSameAsInput(s[1]->Output(), 0));
+}
+
+INSTANTIATE_TEST_SUITE_P(TurboshaftInstructionSelectorTest,
+                         TurboshaftInstructionSelectorSIMDIntNarrowingTest,
+                         ::testing::ValuesIn(kSIMDIntNarrowingInstructions));
+
 TEST_F(TurboshaftInstructionSelectorTest, I32x4DotI8x16I7x16AddS) {
   StreamBuilder m(this, MachineType::Simd128(), MachineType::Simd128(),
                   MachineType::Simd128(), MachineType::Simd128());
@@ -7260,7 +7324,7 @@ TEST_F(TurboshaftInstructionSelectorTest, AtomicStoreWithWriteBarrier) {
   EXPECT_EQ(kArm64Sub, s[0]->arch_opcode());
   EXPECT_EQ(kArchAtomicStoreWithWriteBarrier, s[1]->arch_opcode());
   EXPECT_EQ(kMode_MRR, s[1]->addressing_mode());
-  EXPECT_EQ(AtomicStoreRecordWriteModeField::decode(s[1]->opcode()),
+  EXPECT_EQ(RecordWriteModeField::decode(s[1]->opcode()),
             RecordWriteMode::kValueIsAny);
 }
 
@@ -10638,5 +10702,61 @@ TEST_P(TurboshaftInstructionSelectorAddSub128Test, Word64AddSub128) {
 INSTANTIATE_TEST_SUITE_P(TurboshaftInstructionSelectorTest,
                          TurboshaftInstructionSelectorAddSub128Test,
                          ::testing::ValuesIn(kAddOrSub128));
+
+TEST_F(TurboshaftInstructionSelectorTest, Word32EqualWithReadOnlyRoot) {
+  if (!V8_STATIC_ROOTS_BOOL &&
+      (!COMPRESS_POINTERS_BOOL || isolate()->bootstrapper())) {
+    return;
+  }
+
+  StreamBuilder m(this, MachineType::Int32(), MachineType::AnyTagged());
+  Handle<HeapObject> undefined_value = isolate()->factory()->undefined_value();
+
+  OpIndex param = m.Parameter(0);
+  OpIndex heap_constant = m.HeapConstant(undefined_value);
+  OpIndex eq = m.Word32Equal(param, heap_constant);
+
+  m.Return(eq);
+  Stream s = m.Build();
+
+  ASSERT_EQ(1u, s.size());
+  EXPECT_EQ(kArm64Cmp32, s[0]->arch_opcode());
+  ASSERT_EQ(2u, s[0]->InputCount());
+  EXPECT_TRUE(s[0]->InputAt(1)->IsImmediate());
+}
+
+TEST_F(TurboshaftInstructionSelectorTest, Word64Add3) {
+  StreamBuilder m(this, MachineType::Uint64(), MachineType::Uint64(),
+                  MachineType::Uint64(), MachineType::Uint64());
+  V<Word64> p0 = m.Parameter<Word64>(0);
+  V<Word64> p1 = m.Parameter<Word64>(1);
+  V<Word64> p2 = m.Parameter<Word64>(2);
+  V<Word64Pair> res = m.Word64Add3(p0, p1, p2);
+  OpIndex low = m.Projection(res, 0);
+  OpIndex high = m.Projection(res, 1);
+  m.Return(m.Word64Add(low, high));
+  Stream s = m.Build();
+  ASSERT_EQ(2U, s.size());
+  EXPECT_EQ(kArm64Add64_3, s[0]->arch_opcode());
+  EXPECT_EQ(kArm64Add, s[1]->arch_opcode());
+  ASSERT_EQ(3U, s[0]->InputCount());
+  ASSERT_EQ(2U, s[0]->OutputCount());
+}
+
+TEST_F(TurboshaftInstructionSelectorTest, Word64Add3UnusedHigh) {
+  StreamBuilder m(this, MachineType::Uint64(), MachineType::Uint64(),
+                  MachineType::Uint64(), MachineType::Uint64());
+  V<Word64> p0 = m.Parameter<Word64>(0);
+  V<Word64> p1 = m.Parameter<Word64>(1);
+  V<Word64> p2 = m.Parameter<Word64>(2);
+  V<Word64Pair> res = m.Word64Add3(p0, p1, p2);
+  OpIndex low = m.Projection(res, 0);
+  m.Return(low);
+  Stream s = m.Build();
+  ASSERT_EQ(1U, s.size());
+  EXPECT_EQ(kArm64Add64_3, s[0]->arch_opcode());
+  ASSERT_EQ(3U, s[0]->InputCount());
+  ASSERT_EQ(1U, s[0]->OutputCount());
+}
 
 }  // namespace v8::internal::compiler::turboshaft

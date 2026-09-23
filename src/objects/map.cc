@@ -6,6 +6,7 @@
 
 #include <optional>
 
+#include "src/base/hashing.h"
 #include "src/common/assert-scope.h"
 #include "src/common/globals.h"
 #include "src/execution/frames.h"
@@ -1857,6 +1858,9 @@ DirectHandle<Map> Map::AsLanguageMode(
     Isolate* isolate, DirectHandle<Map> initial_map,
     DirectHandle<SharedFunctionInfo> shared_info) {
   DCHECK(InstanceTypeChecker::IsJSFunction(initial_map->instance_type()));
+#ifndef V8_FUNCTION_ARGUMENTS_CALLER_ARE_OWN_PROPS
+  return initial_map;
+#else
   // Initial map for sloppy mode function is stored in the function
   // constructor. Initial maps for strict mode are cached as special transitions
   // using |strict_function_transition_symbol| as a key.
@@ -1892,6 +1896,7 @@ DirectHandle<Map> Map::AsLanguageMode(
                            SPECIAL_TRANSITION);
   }
   return map;
+#endif  // !V8_FUNCTION_ARGUMENTS_CALLER_ARE_OWN_PROPS
 }
 
 Handle<Map> Map::CopyForElementsTransition(Isolate* isolate,
@@ -2371,8 +2376,8 @@ Handle<Map> Map::CopyReplaceDescriptor(
 }
 
 int Map::Hash(Isolate* isolate, Tagged<HeapObject> prototype) {
-  // For performance reasons we only hash the 2 most variable fields of a map:
-  // prototype and bit_field2.
+  // Hash the prototype, instance type and bit_field2, mixing their bits before
+  // NormalizedMapCache reduces the hash to a cache index.
 
   int prototype_hash;
   if (IsNull(prototype)) {
@@ -2383,7 +2388,10 @@ int Map::Hash(Isolate* isolate, Tagged<HeapObject> prototype) {
     prototype_hash = receiver->GetOrCreateIdentityHash(isolate).value();
   }
 
-  return prototype_hash ^ bit_field2();
+  size_t hash =
+      base::Hasher::Combine(prototype_hash, static_cast<int>(bit_field2()),
+                            static_cast<int>(instance_type()));
+  return static_cast<int>(hash & 0x7FFFFFFF);
 }
 
 namespace {

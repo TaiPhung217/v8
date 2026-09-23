@@ -4845,7 +4845,15 @@ class TestInstanceOf : public FixedInputValueNodeT<3, TestInstanceOf> {
       : Base(bitfield), feedback_(feedback) {}
 
   // The implementation currently calls runtime.
-  static constexpr OpProperties kProperties = OpProperties::JSCall();
+  // Eager deopt frame is attached, since MaglevGraphOptimizer can reduce this
+  // node, and the reduction emits map checks, which can eager deopt.
+  // Unlike generic call nodes like CallBuiltin where attaching eager deopt
+  // frames would be too heavyweight (and are instead handled via
+  // MaglevReducer::CanEagerDeopt), TestInstanceOf is a dedicated opcode where
+  // attaching the frame is cheap and preserves speculative reductions in the
+  // optimizer.
+  static constexpr OpProperties kProperties =
+      OpProperties::EagerDeopt() | OpProperties::JSCall();
   DECLARE_INPUTS(Context, Object, Callable)
   DECLARE_INPUT_TYPES(Tagged, Tagged, Tagged)
 
@@ -9141,8 +9149,8 @@ STORE_CONSTANT_TYPED_ARRAY(StoreIntConstantTypedArrayElement,
                            UINT8_CLAMPED_ELEMENTS, UINT16_ELEMENTS,
                            UINT16_ELEMENTS, UINT32_ELEMENTS)
 STORE_CONSTANT_TYPED_ARRAY(StoreDoubleConstantTypedArrayElement,
-                           OpProperties::CanWrite(), HoleyFloat64,
-                           FLOAT32_ELEMENTS, FLOAT64_ELEMENTS)
+                           OpProperties::CanWrite(), Float64, FLOAT32_ELEMENTS,
+                           FLOAT64_ELEMENTS)
 #undef STORE_CONSTANT_TYPED_ARRAY
 
 // StoreInt32DataViewElement handles stores for all integer DataView types
@@ -10755,6 +10763,7 @@ class CallKnownJSFunction : public VarargsValueNodeT<4, CallKnownJSFunction> {
       OpProperties::JSCall() | OpProperties::DeferredCall();
   DECLARE_INPUTS(Target, Context, Receiver, NewTarget)
 
+  JSDispatchHandle dispatch_handle() const { return dispatch_handle_; }
   compiler::SharedFunctionInfoRef shared_function_info() const {
     return shared_function_info_;
   }

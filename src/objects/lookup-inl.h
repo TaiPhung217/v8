@@ -294,22 +294,40 @@ bool LookupIterator::ExtendingNonExtensible(DirectHandle<JSReceiver> receiver) {
   if (IsAlwaysSharedSpaceJSObjectMap(receiver_map)) {
     return true;
   }
+#if V8_ENABLE_WEBASSEMBLY
+  // Wasm objects have a fixed layout and must never transition their map.
+  if (IsWasmObjectMap(receiver_map)) {
+    return true;
+  }
+#endif  // V8_ENABLE_WEBASSEMBLY
+
   // Extending non-extensible objects with private fields is currently allowed,
   // but we're disallowing it soon.
   DCHECK(!receiver_map->is_extensible());
   DCHECK(name_->IsAnyPrivate());
-  if (name_->IsAnyPrivateName()) {
-    isolate()->CountUsage(v8::Isolate::kExtendingNonExtensibleWithPrivate);
+  // Internal private symbols are engine implementation details and can always
+  // be added to non-extensible objects.
+  if (name_->IsPrivateInternal()) {
+    return false;
   }
+  DCHECK(name_->IsAnyPrivateName());
+  isolate()->CountUsage(v8::Isolate::kExtendingNonExtensibleWithPrivate);
   return v8_flags.js_nonextensible_applies_to_private;
 }
 
 bool LookupIterator::IsCacheableTransition() {
   DCHECK_EQ(TRANSITION, state_);
-  return IsPropertyCell(*transition_) ||
-         (transition_map()->is_dictionary_map() &&
-          !GetStoreTarget<JSReceiver>()->HasFastProperties()) ||
-         IsMap(transition_map()->GetBackPointer());
+  if (IsPropertyCell(*transition_) ||
+      (transition_map()->is_dictionary_map() &&
+       !GetStoreTarget<JSReceiver>()->HasFastProperties())) {
+    return true;
+  }
+  Tagged<Object> back_pointer = transition_map()->GetBackPointer();
+  if (IsMap(back_pointer)) {
+    CHECK_EQ(back_pointer, GetStoreTarget<JSReceiver>()->map());
+    return true;
+  }
+  return false;
 }
 
 // static

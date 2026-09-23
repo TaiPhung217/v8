@@ -348,11 +348,13 @@ void WasmCode::Validate() const {
                 std::numeric_limits<uint16_t>::max());
 
 #ifdef DEBUG
+#ifdef ENABLE_SLOW_DCHECKS
   NativeModule::CallIndirectTargetMap function_index_map;
   if (native_module_) {
     function_index_map =
         native_module_->CreateIndirectCallTargetToFunctionIndexMap();
   }
+#endif
   // Scope for foreign WasmCode pointers.
   WasmCodeRefScope code_ref_scope;
   // We expect certain relocation info modes to never appear in {WasmCode}
@@ -365,36 +367,38 @@ void WasmCode::Validate() const {
       case RelocInfo::WASM_CALL: {
         Address target = it.rinfo()->wasm_call_address();
         WasmCode* code = native_module_->Lookup(target);
-        CHECK_NOT_NULL(code);
-        CHECK_EQ(WasmCode::kJumpTable, code->kind());
-        CHECK(code->contains(target));
+        DCHECK_NOT_NULL(code);
+        DCHECK_EQ(WasmCode::kJumpTable, code->kind());
+        DCHECK(code->contains(target));
         break;
       }
       case RelocInfo::WASM_STUB_CALL: {
         Address target = it.rinfo()->wasm_stub_call_address();
         WasmCode* code = native_module_->Lookup(target);
-        CHECK_NOT_NULL(code);
-        CHECK_EQ(WasmCode::kJumpTable, code->kind());
-        CHECK(code->contains(target));
+        DCHECK_NOT_NULL(code);
+        DCHECK_EQ(WasmCode::kJumpTable, code->kind());
+        DCHECK(code->contains(target));
         break;
       }
       case RelocInfo::WASM_CANONICAL_SIG_ID: {
         uint32_t sig_id = it.rinfo()->wasm_canonical_sig_id();
-        CHECK_LE(sig_id, GetTypeCanonicalizer()->GetCurrentNumberOfTypes());
+        DCHECK_LE(sig_id, GetTypeCanonicalizer()->GetCurrentNumberOfTypes());
         break;
       }
       case RelocInfo::WASM_CODE_POINTER_TABLE_ENTRY: {
+#ifdef ENABLE_SLOW_DCHECKS
         WasmCodePointer call_target =
             it.rinfo()->wasm_code_pointer_table_entry();
         uint32_t function_index = function_index_map.at(call_target);
-        CHECK_EQ(call_target,
-                 native_module_->GetCodePointerHandle(function_index));
+        DCHECK_EQ(call_target,
+                  native_module_->GetCodePointerHandle(function_index));
+#endif
         break;
       }
       case RelocInfo::INTERNAL_REFERENCE:
       case RelocInfo::INTERNAL_REFERENCE_ENCODED: {
         Address target = it.rinfo()->target_internal_reference();
-        CHECK(contains(target));
+        DCHECK(contains(target));
         break;
       }
       case RelocInfo::EXTERNAL_REFERENCE:
@@ -431,7 +435,7 @@ void WasmCode::TryLoadSourceMap(Isolate* isolate) const {
       load_wasm_source_map(v8_isolate, external_url_string.c_str());
   if (source_map_str.IsEmpty()) return;
 
-  native_module_->SetWasmSourceMap(
+  native_module_->SetWasmSourceMapIfUnset(
       std::make_unique<WasmModuleSourceMap>(v8_isolate, source_map_str));
 }
 
@@ -1741,12 +1745,15 @@ bool NativeModule::HasCodeWithTier(uint32_t index, ExecutionTier tier) const {
          code_table_[declared_function_index(module(), index)]->tier() == tier;
 }
 
-void NativeModule::SetWasmSourceMap(
+void NativeModule::SetWasmSourceMapIfUnset(
     std::unique_ptr<WasmModuleSourceMap> source_map) {
+  base::RecursiveMutexGuard guard(&allocation_mutex_);
+  if (source_map_) return;
   source_map_ = std::move(source_map);
 }
 
 WasmModuleSourceMap* NativeModule::GetWasmSourceMap() const {
+  base::RecursiveMutexGuard guard(&allocation_mutex_);
   return source_map_.get();
 }
 

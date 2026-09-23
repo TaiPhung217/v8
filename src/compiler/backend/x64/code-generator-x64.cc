@@ -675,8 +675,7 @@ class WasmOutOfLineTrap : public OutOfLineCode {
     // Just encode the stub index. This will be patched when the code
     // is added to the native module and copied into wasm code space.
     __ near_call(static_cast<Address>(trap_id), RelocInfo::WASM_STUB_CALL);
-    ReferenceMap* reference_map = gen_->zone()->New<ReferenceMap>(gen_->zone());
-    gen_->RecordSafepoint(reference_map);
+    gen_->RecordSafepointWithoutTaggedSlots();
     __ AssertUnreachable(AbortReason::kUnexpectedReturnFromWasmTrap);
   }
 
@@ -687,8 +686,7 @@ void RecordTrapInfoIfNeeded(Zone* zone, CodeGenerator* codegen,
                             InstructionCode opcode, Instruction* instr,
                             int pc) {
   const MemoryAccessMode access_mode = instr->memory_access_mode();
-  if (access_mode == kMemoryAccessTrappingMemOutOfBounds ||
-      access_mode == kMemoryAccessTrappingNullDereference) {
+  if (access_mode == kMemoryAccessTrapping) {
     codegen->RecordTrappingInstruction(pc);
   }
 }
@@ -2084,10 +2082,7 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
     case kArchAtomicStoreWithWriteBarrier: {
       // {EmitTSANAwareStore} calls RecordTrapInfoIfNeeded. No need to do it
       // here.
-      RecordWriteMode mode =
-          arch_opcode == kArchStoreWithWriteBarrier
-              ? RecordWriteModeField::decode(instr->opcode())
-              : AtomicStoreRecordWriteModeField::decode(instr->opcode());
+      RecordWriteMode mode = RecordWriteModeField::decode(instr->opcode());
       // Indirect pointer writes must use a different opcode.
       DCHECK_NE(mode, RecordWriteMode::kValueIsIndirectPointer);
       Register object = i.InputRegister(0);
@@ -2304,6 +2299,40 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
     case kX64Sub128:
       ASSEMBLE_BINOP_WIDE(subq, sbbq);
       break;
+    case kX64Add64_3: {
+      DCHECK_EQ(i.InputRegister(0), i.OutputRegister(0));
+      size_t last_input_index = instr->InputCount() - 1;
+      DCHECK(HasRegisterInput(instr, last_input_index));
+      Register carry_in = i.InputRegister(last_input_index);
+      Register out_low = i.OutputRegister(0);
+      Register out_high = no_reg;
+      bool use_out_high = instr->OutputCount() > 1;
+      if (use_out_high) {
+        out_high = i.OutputRegister(1);
+        DCHECK_NE(out_high, out_low);
+        for (size_t j = 0; j < instr->InputCount(); ++j) {
+          if (HasRegisterInput(instr, j)) {
+            DCHECK_NE(i.InputRegister(j), out_high);
+          }
+        }
+        // GCC style: just addc, no setcc.
+        __ xorq(out_high, out_high);
+      }
+
+      size_t index = 1;
+      if (HasAddressingMode(instr)) {
+        Operand b = i.MemoryOperand(&index);
+        __ addq(out_low, b);
+      } else {
+        ASSEMBLE_RHS(addq, out_low, index);
+      }
+      DCHECK_EQ(index, last_input_index);
+      if (use_out_high) __ adcq(out_high, Immediate(0));
+      __ addq(out_low, carry_in);
+      if (use_out_high) __ adcq(out_high, Immediate(0));
+      break;
+    }
+
     case kX64And32:
       ASSEMBLE_BINOP(andl);
       break;
@@ -8450,8 +8479,7 @@ void CodeGenerator::AssembleConstructFrame() {
         // allocating the stack overflow exception object, but the call did not
         // return in this case.
         // So either way, we can just record an empty safepoint here.
-        ReferenceMap* reference_map = zone()->New<ReferenceMap>(zone());
-        RecordSafepoint(reference_map);
+        RecordSafepointWithoutTaggedSlots();
         __ PopAll(fp_regs_to_save);
         __ PopAll(regs_to_save);
       } else {
@@ -8459,8 +8487,7 @@ void CodeGenerator::AssembleConstructFrame() {
                      RelocInfo::WASM_STUB_CALL);
         // The call does not return, hence we can ignore any references and just
         // define an empty safepoint.
-        ReferenceMap* reference_map = zone()->New<ReferenceMap>(zone());
-        RecordSafepoint(reference_map);
+        RecordSafepointWithoutTaggedSlots();
         __ AssertUnreachable(AbortReason::kUnexpectedReturnFromWasmTrap);
       }
       __ bind(&done);

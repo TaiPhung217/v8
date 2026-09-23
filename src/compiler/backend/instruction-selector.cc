@@ -1067,8 +1067,7 @@ bool InstructionSelector::IsTrappingLoad(turboshaft::OpIndex node) const {
 
   if (!IsLoadOrLoadImmutable(node)) return false;
 
-  bool traps_on_null;
-  return LoadView(schedule_, node).is_trapping(&traps_on_null);
+  return LoadView(schedule_, node).is_trapping();
 }
 
 void InstructionSelector::AppendDeoptimizeArguments(
@@ -1770,8 +1769,7 @@ void InstructionSelector::VisitLoadTrustedPointer(OpIndex node) {
 
   MemoryAccessMode access_mode = kMemoryAccessDirect;
   if (op.kind.with_trap_handler) {
-    DCHECK(op.kind.trap_on_null);
-    access_mode = kMemoryAccessTrappingNullDereference;
+    access_mode = kMemoryAccessTrapping;
   }
   InstructionCode code = ArchOpcodeField::encode(kArchLoadTrustedPointer) |
                          AccessModeField::encode(access_mode);
@@ -2123,7 +2121,7 @@ void InstructionSelector::VisitProjection(OpIndex node) {
       MarkAsUsed(projection.input());
     }
   } else if (value_op.Is<Word64AddSub128BinopOp>() ||
-             value_op.Is<Word64MulWideOp>()) {
+             value_op.Is<Word64MulWideOp>() || value_op.Is<Word64Add3Op>()) {
     MarkAsUsed(projection.input());
   } else if (value_op.Is<DidntThrowOp>()) {
     // Nothing to do here?
@@ -3500,6 +3498,10 @@ void InstructionSelector::VisitNode(OpIndex node) {
           return VisitUint64Sub128(node);
       }
       UNREACHABLE();
+    }
+    case Opcode::kWord64Add3: {
+      MarkPairProjectionsAsWord64(node);
+      return VisitUint64Add3WithCarry(node);
     }
     case Opcode::kWord64MulWide: {
       const Word64MulWideOp& wideop = op.Cast<Word64MulWideOp>();

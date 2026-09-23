@@ -608,7 +608,7 @@ void SharedFunctionInfo::InitFromFunctionLiteral(IsolateT* isolate,
     raw_sfi->set_is_toplevel(is_toplevel);
     DCHECK(IsTheHole(raw_sfi->outer_scope_info()));
     Scope* outer_scope = lit->scope()->GetOuterScopeWithContext();
-    if (outer_scope && (!is_toplevel || !outer_scope->is_script_scope())) {
+    if (outer_scope) {
       raw_sfi->set_outer_scope_info(*outer_scope->scope_info());
       raw_sfi->set_private_name_lookup_skips_outer_class(
           lit->scope()->private_name_lookup_skips_outer_class());
@@ -743,12 +743,9 @@ void SharedFunctionInfo::SetFunctionTokenPosition(int function_token_position,
 }
 
 int SharedFunctionInfo::StartPosition() const {
-  Tagged<Object> maybe_scope_info = name_or_scope_info(kAcquireLoad);
-  if (IsScopeInfo(maybe_scope_info)) {
-    Tagged<ScopeInfo> info = Cast<ScopeInfo>(maybe_scope_info);
-    if (info->HasPositionInfo()) {
-      return info->StartPosition();
-    }
+  if (Tagged<ScopeInfo> info;
+      TryCast(name_or_scope_info(kAcquireLoad), &info)) {
+    return info->StartPosition();
   }
   IsolateForSandbox isolate = GetCurrentIsolateForSandbox();
   if (HasUncompiledData(isolate)) {
@@ -782,12 +779,9 @@ int SharedFunctionInfo::StartPosition() const {
 }
 
 int SharedFunctionInfo::EndPosition() const {
-  Tagged<Object> maybe_scope_info = name_or_scope_info(kAcquireLoad);
-  if (IsScopeInfo(maybe_scope_info)) {
-    Tagged<ScopeInfo> info = Cast<ScopeInfo>(maybe_scope_info);
-    if (info->HasPositionInfo()) {
-      return info->EndPosition();
-    }
+  if (Tagged<ScopeInfo> info;
+      TryCast(name_or_scope_info(kAcquireLoad), &info)) {
+    return info->EndPosition();
   }
   IsolateForSandbox isolate = GetCurrentIsolateForSandbox();
   if (HasUncompiledData(isolate)) {

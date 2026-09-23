@@ -669,6 +669,7 @@ class V8_EXPORT Isolate {
     kModuleNamespaceMissingDefaultWithStarExport = 187,
     kRegExpMatcherFlagsMismatch = 188,
     kRegExpCustomSpecies = 189,
+    kWasmWideArithmetic = 190,
 
     // If you add new values here, you'll also need to update Chromium's:
     // web_feature.mojom, use_counter_callback.cc, and enums.xml. V8 changes to
@@ -995,6 +996,7 @@ class V8_EXPORT Isolate {
    * if any. Returns undefiend if no continuation preserved embedder data was
    * set.
    */
+  V8_DEPRECATE_SOON("Use GetContinuationPreservedEmbedderData instead")
   Local<Data> GetContinuationPreservedEmbedderDataV2();
 
   /**
@@ -1002,6 +1004,7 @@ class V8_EXPORT Isolate {
    * continuation runs. If `data` is empty, the continuation preserved embedder
    * data is set to undefined.
    */
+  V8_DEPRECATE_SOON("Use SetContinuationPreservedEmbedderData instead")
   void SetContinuationPreservedEmbedderDataV2(Local<Data> data);
 
   /**
@@ -1256,8 +1259,7 @@ class V8_EXPORT Isolate {
   void SetReleaseCppHeapCallbackForTesting(ReleaseCppHeapCallback callback);
 
   /**
-   * \returns the C++ heap managed by V8. Only available if such a heap has been
-   *   attached using `AttachCppHeap()`.
+   * \returns the C++ heap managed by V8.
    */
   CppHeap* GetCppHeap() const;
 

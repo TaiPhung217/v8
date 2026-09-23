@@ -165,11 +165,11 @@ void WasmStreaming::SetUrl(const char* url, size_t length) {
 
 // static
 std::shared_ptr<WasmStreaming> WasmStreaming::Unpack(Isolate* isolate,
-                                                     Local<Value> value) {
+                                                     Local<Data> data) {
   TRACE_EVENT("v8.wasm", "wasm.WasmStreaming.Unpack");
   i::HandleScope scope(reinterpret_cast<i::Isolate*>(isolate));
   auto managed =
-      i::Cast<i::CppGCManaged<WasmStreaming>>(Utils::OpenDirectHandle(*value));
+      i::Cast<i::CppGCManaged<WasmStreaming>>(Utils::OpenDirectHandle(*data));
   return managed->ptr().as_shared_ptr();
 }
 
@@ -785,7 +785,7 @@ void WasmStreamingCallbackForTesting(
   auto [isolate, i_isolate, thrower] = js_api_scope.isolates_and_thrower();
 
   std::shared_ptr<v8::WasmStreaming> streaming =
-      v8::WasmStreaming::Unpack(info.GetIsolate(), info.Data());
+      v8::WasmStreaming::Unpack(info.GetIsolate(), info.DataV2());
 
   // We don't check the buffer length up front, to allow d8 to test that the
   // streaming decoder implementation handles overly large inputs correctly.
@@ -805,7 +805,7 @@ void WasmStreamingPromiseFailedCallback(
     const v8::FunctionCallbackInfo<v8::Value>& info) {
   DCHECK(i::ValidateCallbackInfo(info));
   std::shared_ptr<v8::WasmStreaming> streaming =
-      v8::WasmStreaming::Unpack(info.GetIsolate(), info.Data());
+      v8::WasmStreaming::Unpack(info.GetIsolate(), info.DataV2());
   streaming->Abort(info[0]);
 }
 
@@ -1265,7 +1265,7 @@ void WebAssemblyInstantiateImpl(
         DCHECK_EQ(info.Length(), 1);
         Isolate* isolate2 = info.GetIsolate();
         HandleScope scope(isolate2);
-        Local<FixedArray> data = info.Data().As<FixedArray>();
+        Local<FixedArray> data = info.DataV2().As<FixedArray>();
         DCHECK_EQ(3, data->Length());
         Local<Context> context = data->Get(0).As<Context>();
         Local<Promise::Resolver> promise_resolver =
@@ -1306,7 +1306,7 @@ void WebAssemblyInstantiateImpl(
         DCHECK_EQ(1, info.Length());
         HandleScope scope(info.GetIsolate());
         Local<Promise::Resolver> instantiation_promise_resolver =
-            info.Data().As<Promise::Resolver>();
+            info.DataV2().As<Value>().As<Promise::Resolver>();
 
         instantiation_promise_resolver
             ->Reject(info.GetIsolate()->GetCurrentContext(), info[0])
