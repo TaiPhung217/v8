@@ -5480,21 +5480,58 @@ class TurboshaftGraphBuildingInterface
         memory_order);
   }
 
+  void ManagedObjectWait(FullDecoder* decoder, const Value& object,
+                         V<Word32> offset, const Value& waitqueue,
+                         const Value& expected_value, const Value& timeout_ns,
+                         Value* result) {
+    ValueKind kind = expected_value.type.kind();
+    DCHECK(kind == kI32 || kind == kI64 || is_reference(kind));
+    V<BigInt> timeout_bigint = BuildChangeInt64ToBigInt(
+        timeout_ns.get<Word64>(), StubCallMode::kCallWasmRuntimeStub);
+    // Null check happens within the builtin.
+    if (kind == kI32) {
+      result->op = CallBuiltinThroughJumptable<
+          BuiltinCallDescriptor::WasmManagedObjectWait32>(
+          decoder,
+          {object.op, offset, expected_value.op, waitqueue.op, timeout_bigint});
+    } else if (kind == kI64) {
+      V<BigInt> expected_bigint = BuildChangeInt64ToBigInt(
+          expected_value.get<Word64>(), StubCallMode::kCallWasmRuntimeStub);
+      result->op = CallBuiltinThroughJumptable<
+          BuiltinCallDescriptor::WasmManagedObjectWait64>(
+          decoder,
+          {object.op, offset, expected_bigint, waitqueue.op, timeout_bigint});
+    } else {
+      result->op = CallBuiltinThroughJumptable<
+          BuiltinCallDescriptor::WasmManagedObjectWaitRef>(
+          decoder,
+          {object.op, offset, expected_value.op, waitqueue.op, timeout_bigint});
+    }
+  }
+
   void StructWait(FullDecoder* decoder, const Value& struct_obj,
                   const FieldImmediate& imm, const Value& waitqueue,
                   const Value& expected_value, const Value& timeout_ns,
                   Value* result) {
-    // Null check happens within the builtin.
-    result->op = CallBuiltinThroughJumptable<
-        BuiltinCallDescriptor::WasmManagedObjectWait>(
-        decoder,
-        {struct_obj.op,
-         __ Word32Constant(
-             WasmStruct::kHeaderSize +
-             imm.struct_imm.struct_type->field_offset(imm.field_imm.index)),
-         expected_value.op, waitqueue.op,
-         BuildChangeInt64ToBigInt(timeout_ns.get<Word64>(),
-                                  StubCallMode::kCallWasmRuntimeStub)});
+    V<Word32> offset = __ Word32Constant(
+        WasmStruct::kHeaderSize +
+        imm.struct_imm.struct_type->field_offset(imm.field_imm.index));
+    ManagedObjectWait(decoder, struct_obj, offset, waitqueue, expected_value,
+                      timeout_ns, result);
+  }
+
+  void ArrayWait(FullDecoder* decoder, const Value& array_obj,
+                 const ArrayIndexImmediate& imm, const Value& waitqueue,
+                 const Value& index, const Value& expected_value,
+                 const Value& timeout_ns, Value* result) {
+    auto array_value = array_obj.get<WasmArrayNullable>();
+    __ WasmBoundsCheckArray(array_value, index.get<Word32>(), array_obj.type);
+    ValueKind kind = expected_value.type.kind();
+    V<Word32> offset = __ Word32Add(
+        __ Word32Constant(WasmArray::kHeaderSize),
+        __ Word32ShiftLeft(index.get<Word32>(), value_kind_size_log2(kind)));
+    ManagedObjectWait(decoder, array_obj, offset, waitqueue, expected_value,
+                      timeout_ns, result);
   }
 
   void WaitqueueNotify(FullDecoder* decoder, const Value& waitqueue,

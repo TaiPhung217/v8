@@ -39,15 +39,7 @@ class V8_EXPORT_PRIVATE ScopeIterator {
   static const int kScopeDetailsFunctionIndex = 5;
   static const int kScopeDetailsSize = 6;
 
-  enum class CalculateBlocklists {
-    kNo,
-    // Calculates the block lists debug-evaluate needs for the paused function
-    // and its scope chain, unless they are already cached.
-    kIfNeeded,
-  };
-
-  ScopeIterator(Isolate* isolate, FrameInspector* frame_inspector,
-                CalculateBlocklists calculate_blocklists);
+  ScopeIterator(Isolate* isolate, FrameInspector* frame_inspector);
 
   ScopeIterator(Isolate* isolate, DirectHandle<JSFunction> function);
   ScopeIterator(Isolate* isolate, Handle<JSGeneratorObject> generator);
@@ -106,8 +98,12 @@ class V8_EXPORT_PRIVATE ScopeIterator {
   void DebugPrint();
 #endif
 
+  // Whether the current scope is backed by a scope in `debug_scope_info_`.
+  bool HasScope() const { return current_scope_index_ != -1; }
+  // Whether the current scope is backed by `debug_scope_info_` and belongs to
+  // the paused function (i.e. its stack-allocated variables are available).
   bool InInnerScope() const {
-    return !function_.is_null() && current_scope_index_ != -1;
+    return !function_.is_null() && HasScope();
   }
   bool HasContext() const;
   bool NeedsContext() const;
@@ -140,7 +136,6 @@ class V8_EXPORT_PRIVATE ScopeIterator {
   int closure_scope_index_ = -1;
   int current_scope_index_ = -1;
   bool seen_script_scope_ = false;
-  bool calculate_blocklists_ = false;
 
   DebugScriptScope current_scope() const {
     return DebugScriptScope::FromIndex(debug_scope_info_, current_scope_index_);
@@ -158,17 +153,9 @@ class V8_EXPORT_PRIVATE ScopeIterator {
   void AdvanceScope();
   void AdvanceContext();
 
-  // Calculates all the block list starting at the current scope and stores
-  // them in the global "LocalsBlocklistCache".
-  //
-  // Is a no-op unless `calculate_blocklists_` is true and
-  // current_scope_index_ == closure_scope_index_. Otherwise `context_` does not
-  // match with the closure scope.
-  void MaybeCollectAndStoreLocalBlocklists() const;
-
   int GetSourcePosition() const;
 
-  void TryParseAndRetrieveScopes(CalculateBlocklists calculate_blocklists);
+  void TryParseAndRetrieveScopes();
 
   void UnwrapEvaluationContext();
 

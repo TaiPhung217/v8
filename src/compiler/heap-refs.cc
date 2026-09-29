@@ -2191,7 +2191,11 @@ bool ObjectRef::IsNull() const { return i::IsNull(*object()); }
 
 bool ObjectRef::IsUndefined() const { return i::IsUndefined(*object()); }
 
+bool ObjectRef::IsAnyHole() const { return i::IsAnyHole(*object()); }
+
 bool ObjectRef::IsTheHole() const { return i::IsTheHole(*object()); }
+
+bool ObjectRef::IsTdzHole() const { return i::IsTdzHole(*object()); }
 
 bool ObjectRef::IsPropertyCellHole() const {
   return i::IsPropertyCellHole(*object());
@@ -2364,8 +2368,10 @@ std::optional<Float64> JSObjectRef::GetOwnFastConstantDoubleProperty(
   Float64 unboxed_value = Float64::FromBits(
       RacyReadHeapNumberBits(Cast<HeapNumber>(constant.value())));
 
-  // Const double fields should not contain values with the hole NaN pattern.
-  DCHECK(!unboxed_value.is_hole_nan());
+  // Const double fields should not contain values with the hole NaN pattern
+  // unless in-sandbox memory was corrupted.
+  DCHECK_IMPLIES(!v8_flags.expose_memory_corruption_api,
+                 !unboxed_value.is_hole_nan());
   dependencies->DependOnOwnConstantDoubleProperty(*this, map(broker), index,
                                                   unboxed_value);
   return unboxed_value;

@@ -1853,11 +1853,11 @@ class GraphBuildingNodeProcessor {
     return maglev::ProcessResult::kContinue;
   }
 
-  maglev::ProcessResult Process(maglev::ThrowReferenceErrorIfHole* node,
+  maglev::ProcessResult Process(maglev::ThrowReferenceErrorIfTdzHole* node,
                                 const maglev::ProcessingState& state) {
     ThrowingScope throwing_scope(this, node);
 
-    IF (UNLIKELY(RootEqual(node->ValueInput(), RootIndex::kTheHoleValue))) {
+    IF (UNLIKELY(RootEqual(node->ValueInput(), RootIndex::kTdzHoleValue))) {
       GET_FRAME_STATE_MAYBE_ABORT(frame_state, node->lazy_deopt_info());
       __ template CallRuntime<runtime::ThrowAccessedUninitializedVariable>(
           frame_state, native_context(),
@@ -1899,12 +1899,13 @@ class GraphBuildingNodeProcessor {
     return maglev::ProcessResult::kContinue;
   }
 
-  maglev::ProcessResult Process(maglev::ThrowSuperAlreadyCalledIfNotHole* node,
-                                const maglev::ProcessingState& state) {
+  maglev::ProcessResult Process(
+      maglev::ThrowSuperAlreadyCalledIfNotTdzHole* node,
+      const maglev::ProcessingState& state) {
     ThrowingScope throwing_scope(this, node);
 
     IF_NOT (LIKELY(__ RootEqual(Map(node->ValueInput()),
-                                RootIndex::kTheHoleValue, isolate_))) {
+                                RootIndex::kTdzHoleValue, isolate_))) {
       GET_FRAME_STATE_MAYBE_ABORT(frame_state, node->lazy_deopt_info());
       __ template CallRuntime<runtime::ThrowSuperAlreadyCalledError>(
           frame_state, native_context(), {}, ShouldLazyDeoptOnThrow(node));
@@ -1918,11 +1919,11 @@ class GraphBuildingNodeProcessor {
     return maglev::ProcessResult::kContinue;
   }
 
-  maglev::ProcessResult Process(maglev::ThrowSuperNotCalledIfHole* node,
+  maglev::ProcessResult Process(maglev::ThrowSuperNotCalledIfTdzHole* node,
                                 const maglev::ProcessingState& state) {
     ThrowingScope throwing_scope(this, node);
 
-    IF (UNLIKELY(__ RootEqual(Map(node->ValueInput()), RootIndex::kTheHoleValue,
+    IF (UNLIKELY(__ RootEqual(Map(node->ValueInput()), RootIndex::kTdzHoleValue,
                               isolate_))) {
       GET_FRAME_STATE_MAYBE_ABORT(frame_state, node->lazy_deopt_info());
       __ template CallRuntime<runtime::ThrowSuperNotCalled>(
@@ -6373,7 +6374,8 @@ class GraphBuildingNodeProcessor {
             case maglev::vobj::FieldType::kTrustedPointer:
             case maglev::vobj::FieldType::kFloat64:
             case maglev::vobj::FieldType::kInt32:
-              AddVirtualObjectNestedValue(builder, virtual_objects, value_node);
+              AddVirtualObjectNestedValue(builder, virtual_objects, vobj,
+                                          value_node);
               break;
             case maglev::vobj::FieldType::kNone:
               UNREACHABLE();
@@ -6385,7 +6387,7 @@ class GraphBuildingNodeProcessor {
   void AddVirtualObjectNestedValue(
       FrameStateData::Builder& builder,
       const maglev::VirtualObjectList& virtual_objects,
-      const maglev::ValueNode* value) {
+      const maglev::VirtualObject* vobj, const maglev::ValueNode* value) {
     if (maglev::IsConstantNode(value->opcode())) {
       switch (value->opcode()) {
         case maglev::Opcode::kHeapConstant:
@@ -6401,12 +6403,16 @@ class GraphBuildingNodeProcessor {
               value->opcode() == maglev::Opcode::kFloat64Constant
                   ? value->Cast<maglev::Float64Constant>()->value()
                   : value->Cast<maglev::HoleyFloat64Constant>()->value();
-          if (value_as_float.is_hole_nan()) {
+          DCHECK(vobj->has_static_map());
+          const bool is_fixed_double_array =
+              vobj->map()->IsFixedDoubleArrayMap();
+          if (is_fixed_double_array && value_as_float.is_hole_nan()) {
             builder.AddInput(
                 MachineType::AnyTagged(),
                 __ HeapConstantHole(local_factory_->the_hole_value()));
 #ifdef V8_ENABLE_UNDEFINED_DOUBLE
-          } else if (value_as_float.is_undefined_nan()) {
+          } else if (is_fixed_double_array &&
+                     value_as_float.is_undefined_nan()) {
             builder.AddInput(MachineType::AnyTagged(), undefined_value_);
 #endif  // V8_ENABLE_UNDEFINED_DOUBLE
           } else {

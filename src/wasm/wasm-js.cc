@@ -2272,9 +2272,8 @@ i::DirectHandle<i::JSFunction> NewPromisingWasmExportedFunction(
   i::DirectHandle<i::Code> wrapper;
   if (!i::wasm::IsJSCompatibleSignature(sig)) {
     // If the signature is incompatible with JS, the original export will have
-    // compiled an incompatible signature wrapper, so just reuse that.
-    wrapper =
-        i::DirectHandle<i::Code>(data->wrapper_code(i_isolate), i_isolate);
+    // compiled an incompatible signature wrapper, so fetch it from the cache.
+    wrapper = i::WasmExportedFunction::GetWrapper(i_isolate, sig);
   } else {
     wrapper = BUILTIN_CODE(i_isolate, WasmPromising);
   }
@@ -2290,11 +2289,11 @@ i::DirectHandle<i::JSFunction> NewPromisingWasmExportedFunction(
   if (func_index >= num_imported_functions) {
     implicit_arg = trusted_instance_data;
   } else {
-    implicit_arg = i_isolate->factory()->NewWasmImportData(direct_handle(
+    implicit_arg = direct_handle(
         i::TrustedCast<i::WasmImportData>(
             trusted_instance_data->dispatch_table_for_imports()->implicit_arg(
                 func_index)),
-        i_isolate));
+        i_isolate);
   }
 
   i::DirectHandle<i::WasmInternalFunction> internal =
@@ -2303,9 +2302,6 @@ i::DirectHandle<i::JSFunction> NewPromisingWasmExportedFunction(
           trusted_instance_data->GetCallTarget(func_index), sig);
   i::DirectHandle<i::WasmFuncRef> func_ref =
       i_isolate->factory()->NewWasmFuncRef(internal, rtt);
-  if (func_index < num_imported_functions) {
-    i::TrustedCast<i::WasmImportData>(implicit_arg)->set_call_origin(*internal);
-  }
 
   i::DirectHandle<i::JSFunction> result = i::WasmExportedFunction::New(
       i_isolate, trusted_instance_data, func_ref, internal,

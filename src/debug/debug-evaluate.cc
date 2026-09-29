@@ -149,8 +149,11 @@ MaybeDirectHandle<Object> DebugEvaluate::WithTopmostArguments(
 
   // Materialize receiver.
   DirectHandle<Object> this_value(it.frame()->receiver(), isolate);
-  DCHECK_EQ(it.frame()->IsConstructor(), IsTheHole(*this_value));
-  if (!IsTheHole(*this_value)) {
+#ifdef V8_ENABLE_TDZ_HOLE
+  DCHECK(!IsTheHole(*this_value));
+#endif
+  DCHECK_EQ(it.frame()->IsConstructor(), IsTdzHole(*this_value));
+  if (!IsTdzHole(*this_value)) {
     DirectHandle<String> this_str = factory->this_string();
     JSObject::SetOwnPropertyIgnoreAttributes(materialized, this_str, this_value,
                                              NONE)
@@ -206,8 +209,7 @@ DebugEvaluate::ContextBuilder::ContextBuilder(Isolate* isolate,
                                               int scope_index)
     : isolate_(isolate),
       frame_inspector_(frame, inlined_jsframe_index, isolate),
-      scope_iterator_(isolate, &frame_inspector_,
-                      ScopeIterator::CalculateBlocklists::kNo),
+      scope_iterator_(isolate, &frame_inspector_),
       scope_index_(scope_index) {
   Factory* factory = isolate->factory();
 
@@ -555,9 +557,9 @@ bool BytecodeHasNoSideEffect(interpreter::Bytecode bytecode) {
     case Bytecode::kJumpLoop:
     case Bytecode::kThrow:
     case Bytecode::kReThrow:
-    case Bytecode::kThrowReferenceErrorIfHole:
-    case Bytecode::kThrowSuperNotCalledIfHole:
-    case Bytecode::kThrowSuperAlreadyCalledIfNotHole:
+    case Bytecode::kThrowReferenceErrorIfTdzHole:
+    case Bytecode::kThrowSuperNotCalledIfTdzHole:
+    case Bytecode::kThrowSuperAlreadyCalledIfNotTdzHole:
     case Bytecode::kIllegal:
     case Bytecode::kCallJSRuntime:
     case Bytecode::kReturn:

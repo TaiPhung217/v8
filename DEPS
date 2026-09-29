@@ -149,7 +149,7 @@ vars = {
   # Three lines of non-changing comments so that
   # the commit queue can handle CLs rolling agents-public
   # and whatever else without interference from each other.
-  'agents_public_revision': '09da8780044de1a8977e1d9c6adba1298b92f99e',
+  'agents_public_revision': '865684c4f7092e4ab05adcd3fcf068672ff28d27',
 }
 
 deps = {
@@ -218,7 +218,7 @@ deps = {
   'test/mozilla/data':
     Var('chromium_url') + '/v8/deps/third_party/mozilla-tests.git' + '@' + 'f6c578a10ea707b1a8ab0b88943fe5115ce2b9be',
   'test/test262/data':
-    Var('chromium_url') + '/external/github.com/tc39/test262.git' + '@' + '35d566604512cba908054eec49f85e64a59f3091',
+    Var('chromium_url') + '/external/github.com/tc39/test262.git' + '@' + '7ab7fafa0003f73fc85c1b95d88094d33f7eb8bd',
   'third_party/android_platform': {
     'url': Var('chromium_url') + '/chromium/src/third_party/android_platform.git' + '@' + 'e3919359f2387399042d31401817db4a02d756ec',
     'condition': 'checkout_android',
@@ -310,15 +310,15 @@ deps = {
     'url': Var('chromium_url') + '/external/github.com/google/benchmark.git' + '@' + '8abf1e701fbd88c8170f48fe0558247e2e5f8e7d',
   },
   'third_party/fuzztest':
-    Var('chromium_url') + '/chromium/src/third_party/fuzztest.git' + '@' + '447536e8178def764528f74e780ba940d8ca0559',
+    Var('chromium_url') + '/chromium/src/third_party/fuzztest.git' + '@' + '55970ac2863f6b740d3e8247ac0ec48e7acb2113',
   'third_party/fuzztest/src':
-    Var('chromium_url') + '/external/github.com/google/fuzztest.git' + '@' + '487de66b54298c1949a47e6a8a242dda9da92703',
+    Var('chromium_url') + '/external/github.com/google/fuzztest.git' + '@' + '7a8e9056de2a4f745082a4b3861a67ada47ced36',
   'third_party/googletest/src':
     Var('chromium_url') + '/external/github.com/google/googletest.git' + '@' + '4fe3307fb2d9f86d19777c7eb0e4809e9694dde7',
   'third_party/highway/src':
     Var('chromium_url') + '/external/github.com/google/highway.git' + '@' + '2607d3b5b0113992fe84d3848859eae13b3b52c1',
   'third_party/icu':
-    Var('chromium_url') + '/chromium/deps/icu.git' + '@' + '6ebb40c594776cc2c21ea14df85a2a89a328b364',
+    Var('chromium_url') + '/chromium/deps/icu.git' + '@' + '5aa526207171ecadf31597f0980a7b7ad8872f33',
   'third_party/instrumented_libs': {
     'url': Var('chromium_url') + '/chromium/third_party/instrumented_libraries.git' + '@' + 'd15c278eed5d38d9acf2d8054cf37baba93cef8e',
     'condition': 'checkout_instrumented_libraries',

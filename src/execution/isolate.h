@@ -514,6 +514,7 @@ using DebugObjectCache = std::vector<Handle<HeapObject>>;
     wasm_custom_descriptors_enabled_callback, nullptr)                      \
   V(IsJSApiWrapperNativeErrorCallback,                                      \
     is_js_api_wrapper_native_error_callback, nullptr)                       \
+  V(ArrayBufferDetachCallback, array_buffer_detach_callback, nullptr)       \
   /* State for Relocatable. */                                              \
   V(Relocatable*, relocatable_top, nullptr)                                 \
   V(DebugObjectCache*, string_stream_debug_object_cache, nullptr)           \
@@ -2126,6 +2127,7 @@ class V8_EXPORT_PRIVATE Isolate final : private HiddenFactory {
     }
   }
 
+  v8::CrashKey AllocateCrashKeyString(const char key[], CrashKeySize size);
   v8::CrashKey AddCrashKeyString(const char key[], CrashKeySize size,
                                  std::string_view value);
   void SetCrashKeyString(CrashKey crash_key, std::string_view value);

@@ -191,11 +191,12 @@ RUNTIME_FUNCTION(Runtime_TrapHandlerThrowWasmError) {
                  &wire_bytes.begin()[pos])
              .first;
     // shared-everything atomic instructions.
-    if (op >= 0xFE4F) {
+    if (op >= 0xFE4F || op == wasm::kExprArrayWait) {
       message = MessageTemplate::kWasmTrapNullDereference;
     }
 #define CASE(name, ...) || op == wasm::kExpr##name
-    DCHECK_EQ(op >= 0xFE4F, false FOREACH_ATOMIC_GC_OPCODE(CASE));
+    DCHECK_EQ(op >= 0xFE4F || op == wasm::kExprArrayWait,
+              false FOREACH_ATOMIC_GC_OPCODE(CASE));
 #undef CASE
   }
   return ThrowWasmError(isolate, message);
@@ -479,10 +480,7 @@ void ReplaceJSToWasmWrapper(
   Tagged<JSFunction> external_function;
   CHECK(func_ref->internal(isolate)->try_get_external(&external_function));
   CHECK(external_function->shared()->HasWasmExportedFunctionData(isolate));
-  Tagged<WasmExportedFunctionData> function_data =
-      external_function->shared()->wasm_exported_function_data();
   external_function->UpdateCode(isolate, wrapper_code);
-  function_data->set_wrapper_code(wrapper_code);
 }
 }  // namespace
 
@@ -568,45 +566,7 @@ RUNTIME_FUNCTION(Runtime_TierUpWasmToJSWrapper) {
   isolate->set_context(import_data->native_context());
 
   const wasm::CanonicalSig* sig = import_data->sig();
-  DirectHandle<Object> origin(import_data->call_origin(), isolate);
   wasm::WasmCodeRefScope code_ref_scope;
-
-  if (IsWasmInternalFunction(*origin)) {
-    // The tierup for `WasmInternalFunction` is special, as there may not be an
-    // instance.
-    int expected_arity = static_cast<int>(sig->parameter_count());
-    wasm::ImportCallKind kind;
-    if (IsJSFunction(import_data->callable())) {
-      Tagged<SharedFunctionInfo> shared =
-          Cast<JSFunction>(import_data->callable())->shared();
-      expected_arity =
-          shared->internal_formal_parameter_count_without_receiver();
-      kind = wasm::ImportCallKind::kJSFunction;
-    } else {
-      kind = wasm::ImportCallKind::kUseCallBuiltin;
-    }
-    wasm::WasmImportWrapperCache* cache = wasm::GetWasmImportWrapperCache();
-    wasm::Suspend suspend = import_data->suspend();
-    std::shared_ptr<wasm::WasmWrapperHandle> wrapper_handle =
-        cache->GetCompiled(isolate, {kind, sig, expected_arity, suspend});
-    DCHECK_EQ(TrustedCast<WasmInternalFunction>(*origin)->call_target(),
-              wrapper_handle->code_pointer());
-    cache->PublishCounterUpdates(isolate);
-    return ReadOnlyRoots(isolate).undefined_value();
-  }
-
-#ifdef DEBUG
-  int table_slot = import_data->table_slot();
-  DirectHandle<WasmDispatchTable> dispatch_table;
-  DirectHandle<WasmDispatchTableForImports> dispatch_table_for_imports;
-  if (IsWasmDispatchTable(*origin)) {
-    dispatch_table = TrustedCast<WasmDispatchTable>(origin);
-    DCHECK_EQ(sig->index(), dispatch_table->sig(table_slot));
-  } else {
-    dispatch_table_for_imports =
-        CheckedCast<WasmDispatchTableForImports>(origin);
-  }
-#endif  // DEBUG
 
   // Compile a wrapper for the target callable.
   DirectHandle<JSReceiver> callable(Cast<JSReceiver>(import_data->callable()),
@@ -623,29 +583,16 @@ RUNTIME_FUNCTION(Runtime_TierUpWasmToJSWrapper) {
   callable = resolved.callable();  // Update to ultimate target.
   DCHECK_NE(wasm::ImportCallKind::kLinkError, kind);
   int expected_arity = static_cast<int>(sig->parameter_count());
-  if (kind == wasm::ImportCallKind ::kJSFunction) {
+  if (kind == wasm::ImportCallKind::kJSFunction) {
     expected_arity = Cast<JSFunction>(callable)
                          ->shared()
                          ->internal_formal_parameter_count_without_receiver();
   }
 
-  // Lookup or compile a wrapper.
+  // Lookup or compile a wrapper. The returned wrapper handle is not needed
+  // because GetCompiled updates the code pointer table entry in-place.
   wasm::WasmImportWrapperCache* cache = wasm::GetWasmImportWrapperCache();
-  std::shared_ptr<wasm::WasmWrapperHandle> wrapper_handle =
-      cache->GetCompiled(isolate, {kind, sig, expected_arity, suspend});
-
-#ifdef DEBUG
-  // Check consistency of the dispatch table's target code pointer. The code
-  // pointer is owned by the import wrapper cache and was updated when compiling
-  // the wrapper.
-  if (!dispatch_table.is_null()) {
-    DCHECK_EQ(dispatch_table->target(table_slot),
-              wrapper_handle->code_pointer());
-  } else {
-    DCHECK_EQ(dispatch_table_for_imports->target(table_slot),
-              wrapper_handle->code_pointer());
-  }
-#endif  // DEBUG
+  cache->GetCompiled(isolate, {kind, sig, expected_arity, suspend});
 
   cache->PublishCounterUpdates(isolate);
 
@@ -769,15 +716,13 @@ RUNTIME_FUNCTION(Runtime_WasmI64AtomicWait) {
                                     timeout_ns->AsInt64());
 }
 
-RUNTIME_FUNCTION(Runtime_WasmManagedObjectWait) {
-  HandleScope scope(isolate);
-  DCHECK_EQ(5, args.length());
-  Tagged<HeapObject> object = Cast<HeapObject>(args[0]);
-  int field_offset = args.smi_value_at(1);
-  int32_t expected_value = static_cast<int32_t>(args.number_value_at(2));
-  Tagged<HeapObject> waitqueue = Cast<HeapObject>(args[3]);
-  Tagged<BigInt> timeout_ns = Cast<BigInt>(args[4]);
-
+namespace {
+template <typename T>
+Tagged<Object> WasmManagedObjectWait(Isolate* isolate,
+                                     Tagged<HeapObject> object,
+                                     int field_offset, T expected_value,
+                                     Tagged<HeapObject> waitqueue,
+                                     Tagged<BigInt> timeout_ns) {
   TSAN_ACQUIRE(object.address());
   TSAN_ACQUIRE(waitqueue.address());
 
@@ -788,15 +733,57 @@ RUNTIME_FUNCTION(Runtime_WasmManagedObjectWait) {
   }
 
   if (!HeapLayout::InAnySharedSpace(object) || !isolate->allow_atomics_wait()) {
+    const char* op_name = IsWasmStruct(object) ? "struct.wait" : "array.wait";
     return ThrowWasmError(
         isolate, MessageTemplate::kAtomicsOperationNotAllowed,
-        {isolate->factory()->NewStringFromAsciiChecked("struct.wait")});
+        {isolate->factory()->NewStringFromAsciiChecked(op_name)});
   }
 
-  return FutexEmulation::WaitWasmManagedObject(
+  return FutexEmulation::WaitWasmManagedObject<T>(
       isolate, object, field_offset,
       Cast<Managed<FutexManagedObjectWaitList>>(waitqueue), expected_value,
       timeout_ns->AsInt64());
+}
+}  // namespace
+
+RUNTIME_FUNCTION(Runtime_WasmManagedObjectWait32) {
+  HandleScope scope(isolate);
+  DCHECK_EQ(5, args.length());
+  Tagged<HeapObject> object = Cast<HeapObject>(args[0]);
+  int field_offset = args.smi_value_at(1);
+  int32_t expected_value = static_cast<int32_t>(args.number_value_at(2));
+  Tagged<HeapObject> waitqueue = Cast<HeapObject>(args[3]);
+  Tagged<BigInt> timeout_ns = Cast<BigInt>(args[4]);
+
+  return WasmManagedObjectWait<int32_t>(isolate, object, field_offset,
+                                        expected_value, waitqueue, timeout_ns);
+}
+
+RUNTIME_FUNCTION(Runtime_WasmManagedObjectWait64) {
+  HandleScope scope(isolate);
+  DCHECK_EQ(5, args.length());
+  Tagged<HeapObject> object = Cast<HeapObject>(args[0]);
+  int field_offset = args.smi_value_at(1);
+  Tagged<BigInt> expected_value = Cast<BigInt>(args[2]);
+  Tagged<HeapObject> waitqueue = Cast<HeapObject>(args[3]);
+  Tagged<BigInt> timeout_ns = Cast<BigInt>(args[4]);
+
+  return WasmManagedObjectWait<int64_t>(isolate, object, field_offset,
+                                        expected_value->AsInt64(), waitqueue,
+                                        timeout_ns);
+}
+
+RUNTIME_FUNCTION(Runtime_WasmManagedObjectWaitRef) {
+  HandleScope scope(isolate);
+  DCHECK_EQ(5, args.length());
+  Tagged<HeapObject> object = Cast<HeapObject>(args[0]);
+  int field_offset = args.smi_value_at(1);
+  Tagged<Object> expected_value = args[2];
+  Tagged<HeapObject> waitqueue = Cast<HeapObject>(args[3]);
+  Tagged<BigInt> timeout_ns = Cast<BigInt>(args[4]);
+
+  return WasmManagedObjectWait<Tagged<Object>>(
+      isolate, object, field_offset, expected_value, waitqueue, timeout_ns);
 }
 
 RUNTIME_FUNCTION(Runtime_WasmWaitqueueNew) {

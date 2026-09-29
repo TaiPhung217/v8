@@ -3569,10 +3569,18 @@ CodeGenerator::CodeGenResult CodeGenerator::AssembleArchInstruction(
     case kX64Movsh:
       if (instr->HasOutput()) {
         CpuFeatureScope f16c_scope(masm(), F16C);
-        CpuFeatureScope avx2_scope(masm(), AVX2);
-        RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
-        __ vpbroadcastw(i.OutputDoubleRegister(), i.MemoryOperand());
-        __ vcvtph2ps(i.OutputDoubleRegister(), i.OutputDoubleRegister());
+        XMMRegister dst = i.OutputDoubleRegister();
+        if (CpuFeatures::IsSupported(AVX2)) {
+          CpuFeatureScope avx2_scope(masm(), AVX2);
+          RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
+          __ vpbroadcastw(dst, i.MemoryOperand());
+        } else {
+          CpuFeatureScope avx_scope(masm(), AVX);
+          __ vxorps(dst, dst, dst);
+          RecordTrapInfoIfNeeded(zone(), this, opcode, instr, __ pc_offset());
+          __ vpinsrw(dst, dst, i.MemoryOperand(), 0);
+        }
+        __ vcvtph2ps(dst, dst);
       } else {
         CpuFeatureScope f16c_scope(masm(), F16C);
         size_t index = 0;
@@ -8362,10 +8370,20 @@ void CodeGenerator::FinishFrame(Frame* frame) {
   if (!saves.is_empty()) {  // Save callee-saved registers.
     frame->AllocateSavedCalleeRegisterSlots(saves.Count());
   }
+  if (v8_flags.enforce_x64_16byte_alignment) {
+    frame->AlignFrame(2 * kSystemPointerSize);
+  }
 }
 
 void CodeGenerator::AssembleConstructFrame() {
   auto call_descriptor = linkage()->GetIncomingDescriptor();
+
+  if (v8_flags.enforce_x64_16byte_alignment) {
+    // The frame has been previously padded in CodeGenerator::FinishFrame().
+    DCHECK_EQ(frame()->GetTotalFrameSlotCount() % 2, 0);
+    DCHECK_EQ(frame()->GetReturnSlotCount() % 2, 0);
+  }
+
   if (frame_access_state()->has_frame()) {
     int pc_base = __ pc_offset();
 

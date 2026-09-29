@@ -269,6 +269,7 @@
   'regress/regress-1034322': [PASS, HEAVY, NO_VARIANTS, ['mode != release', SKIP]],
   'regress/regress-1320641': [PASS, HEAVY],
   'regress/regress-1447343': [PASS, HEAVY],
+  'regress/wasm/regress-523591366': [PASS, HEAVY],
   'wasm/grow-huge-memory': [PASS, HEAVY],
   'wasm/grow-huge-memory-resizable-buffer': [PASS, HEAVY],
   'wasm/huge-memory': [PASS, HEAVY],
@@ -1073,6 +1074,7 @@
   'regress/wasm/regress-521064735': [SKIP],
   'regress/wasm/regress-524830496': [SKIP],
   'regress/wasm/regress-536581698': [SKIP],
+  'regress/wasm/regress-565565747': [SKIP],
   'wasm/shared-everything/*': [SKIP],
   'wasm/subtyping-invalid': [SKIP],
 
@@ -1391,6 +1393,7 @@
   'tzoffset-transition-moscow': [PASS,FAIL],
   'tzoffset-transition-new-york': [PASS,FAIL],
   'tzoffset-seoul': [PASS,FAIL],
+  'tzoffset-fractional-los-angeles': [PASS,FAIL],
 
   # i18n is required for Intl
   'regress/regress-crbug-1052647': [PASS,FAIL],
@@ -1452,6 +1455,7 @@
   'regress/regress-1320641': [SKIP],
   'regress/regress-354626177': [SKIP],
   'regress/wasm/regress-398439335': [SKIP],
+  'regress/wasm/regress-523591366': [SKIP],
   'turbolev/regress-488090094': [SKIP],
   'turbolev/dataview-deopt-oob': [SKIP],
   'maglev/regress-498816446-3': [SKIP],
@@ -1921,6 +1925,7 @@
   'tzoffset-transition-new-york': [SKIP],
   'tzoffset-transition-new-york-noi18n': [SKIP],
   'tzoffset-seoul': [SKIP],
+  'tzoffset-fractional-los-angeles': [SKIP],
   'tzoffset-seoul-noi18n': [SKIP],
 
   # Suspect to stress other tests when run in background.
@@ -1949,6 +1954,7 @@
   'tzoffset-transition-new-york': [SKIP],
   'tzoffset-transition-new-york-noi18n': [SKIP],
   'tzoffset-seoul': [SKIP],
+  'tzoffset-fractional-los-angeles': [SKIP],
   'tzoffset-seoul-noi18n': [SKIP],
   # Flaky OOM:
   'regress/regress-748069': [SKIP],
